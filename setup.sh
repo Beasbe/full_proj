@@ -5,14 +5,6 @@ set -e
 check_dependencies() {
     echo "Проверка необходимых зависимостей..."
 
-    # Проверка Git
-    if ! command -v git &> /dev/null; then
-        echo "Ошибка: Git не установлен."
-        echo "Установите Git: https://git-scm.com/downloads"
-        exit 1
-    fi
-    echo "Git: $(git --version)"
-
     # Проверка Docker
     if ! command -v docker &> /dev/null; then
         echo "Ошибка: Docker не установлен."
@@ -55,16 +47,12 @@ check_dependencies
 echo "Запуск настройки проекта (Laravel + Filament + Next.js)"
 echo "========================================================="
 
-# 1. Клонируем репозитории (если ещё не клонированы)
-if [ ! -d "full_proj" ]; then
-    echo "Клонирование основного репозитория..."
-    git clone https://github.com/Beasbe/full_proj.git
-fi
-cd full_proj
-
+# 1. Клонируем фронтенд-репозиторий (если ещё не клонирован)
 if [ ! -d "It_project" ]; then
     echo "Клонирование фронтенд-репозитория..."
     git clone https://github.com/Beasbe/It_project.git
+else
+    echo "Фронтенд-репозиторий уже существует, пропускаем клонирование"
 fi
 
 # 2. Подготовка .env файлов
@@ -99,7 +87,7 @@ docker compose exec app php artisan key:generate --no-interaction
 
 # 6. Миграции
 echo "Применение миграций..."
-docker compose exec app php artisan migrate --force --no-interaction
+docker compose exec app php artisan migrate
 
 # 7. Создание админа (интерактивно)
 echo "Создание администратора Filament..."
