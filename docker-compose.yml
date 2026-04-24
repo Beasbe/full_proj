@@ -1,5 +1,4 @@
 services:
-  # PHP + Composer сервис
   app:
     build:
       context: ./CMS
@@ -8,13 +7,27 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
-      - ./CMS:/var/www/html # монтируем всю папку CMS
-      - ./CMS/docker/php/php.ini:/usr/local/etc/php/php.ini # если файл есть
-      - ./CMS/database/database.sqlite:/var/www/html/database/database.sqlite
+      - ./CMS:/var/www/html
+      - ./CMS/docker/php/php.ini:/usr/local/etc/php/php.ini
     networks:
       - laravel-network
 
-  # Веб-сервер Nginx
+  db:
+    image: mariadb:10.11
+    container_name: laravel-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: laravel_dev
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: secret
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - laravel-network
+
   webserver:
     image: nginx:alpine
     container_name: nginx-server
@@ -29,13 +42,12 @@ services:
     depends_on:
       - app
 
-  # Фронтенд Next.js
   frontend:
     build:
       context: ./It_project
       dockerfile: Dockerfile
-      args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080 # для браузера
+    args:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: nextjs-frontend
     restart: unless-stopped
     ports:
@@ -50,3 +62,5 @@ services:
 networks:
   laravel-network:
     driver: bridge
+
+volumes: db_
