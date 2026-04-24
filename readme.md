@@ -25,13 +25,18 @@
 ---
 
 ##  Пошаговый запуск
-
+```bash
+git clone https://github.com/Beasbe/full_proj.git
+cd full_proj
+git clone https://github.com/Beasbe/It_project.git
+```
 ### 1. Подготовка `.env` и генерация `APP_KEY`
 Убедитесь, что в папке `./CMS` существует файл `.env`. Если его нет, создайте его на основе `.env.example`:
 ```bash
 cp ./CMS/.env.example ./CMS/.env
+cp ./It_project/env.local.example ./It_project/.env.local # не работает
 ```
-
+В /It_project/.env.local надо вписать данные для автоматической отправки пиьма на почту после заполнения формы
 Запустите контейнеры в фоновом режиме:
 ```bash
 docker compose up -d --build
@@ -39,6 +44,7 @@ docker compose up -d --build
 
 Сгенерируйте ключ приложения через Artisan (ключ автоматически запишется в `./CMS/.env`):
 ```bash
+docker compose exec app composer install
 docker compose exec app php artisan key:generate
 ```
 >  Ключ будет сохранён в формате `base64:...` и автоматически подтягиваться при перезапуске.
@@ -88,3 +94,6 @@ docker compose exec app php artisan tinker
 ]);
 exit
 ```
+
+
+##  Изменение логотипа
