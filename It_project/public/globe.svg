@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_Слой_2" data-name="Слой 2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 99.5 94.03">
+  <defs>
+    <style>
+      .cls-1 {
+        font-size: 23.3px;
+      }
+
+      .cls-1, .cls-2 {
+        fill: #ef7f16;
+      }
+
+      .cls-1, .cls-2, .cls-3 {
+        font-family: Calibri-Bold, Calibri;
+        font-weight: 700;
+      }
+
+      .cls-2, .cls-3 {
+        font-size: 23.3px;
+      }
+
+      .cls-4 {
+        fill: #f07f18;
+      }
+
+      .cls-3, .cls-5 {
+        fill: #2a2a2a;
+      }
+
+      .cls-6 {
+        letter-spacing: -.05em;
+      }
+
+      .cls-7 {
+        fill: none;
+        stroke: url(#_Безымянный_градиент_31);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 7px;
+      }
+    </style>
+    <linearGradient id="_Безымянный_градиент_31" data-name="Безымянный градиент 31" x1="-2.28" y1="16.97" x2="101.78" y2="77.06" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f5dfca"/>
+      <stop offset=".05" stop-color="#f4cca9"/>
+      <stop offset=".11" stop-color="#f2b884"/>
+      <stop offset=".17" stop-color="#f2a664"/>
+      <stop offset=".24" stop-color="#f1984b"/>
+      <stop offset=".32" stop-color="#f08d37"/>
+      <stop offset=".41" stop-color="#f08529"/>
+      <stop offset=".52" stop-color="#f08121"/>
+      <stop offset=".72" stop-color="#f0801f"/>
+    </linearGradient>
+  </defs>
+  <g id="_Слой_2-2" data-name="Слой 2">
+    <g>
+      <text class="cls-3" transform="translate(52.07 62.25)"><tspan x="0" y="0">ект</tspan></text>
+      <path class="cls-5" d="M14.71,43h29.51s.52-1.29,1.69-2.34l1.31,1.53s-.25.22-.5.52c-.19.23-.4.56-.51.81-.13.31-.26.68-.34.93-.12.41-.15.57-.15.57H14.71v-2.03Z"/>
+      <path class="cls-4" d="M85.07,43.04v1.99h-30.89s-.26-1.66-.98-2.43-1.38-.97-1.38-.97c0,0-.64-.25-1.46-.32s-1.47.09-1.47.09c0,0-.57.12-.98.34s-.68.46-.68.46l-1.31-1.53s.87-.73,1.84-1.05,2.06-.32,2.06-.32c0,0,.88-.02,1.59.14s1.42.43,1.42.43c0,0,.88.48,1.24.78.33.27.93.95,1.16,1.35.2.35.5,1.04.5,1.04h29.34Z"/>
+      <rect class="cls-7" x="3.5" y="3.5" width="92.5" height="87.03" rx="14.29" ry="14.29"/>
+      <circle class="cls-5" cx="49.75" cy="45.56" r="2.32"/>
+      <text class="cls-3" transform="translate(23.88 34.78)"><tspan x="0" y="0">Ай</tspan></text>
+      <text class="cls-2" transform="translate(49.75 34.83)"><tspan class="cls-6" x="0" y="0">Т</tspan><tspan x="10.31" y="0">и</tspan></text>
+      <text class="cls-1" transform="translate(14.57 62.25)"><tspan x="0" y="0">про</tspan></text>
+    </g>
+  </g>
+</svg>
