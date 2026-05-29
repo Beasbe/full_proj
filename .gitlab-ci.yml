@@ -1,0 +1,45 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  REGISTRY: localhost:5000
+  MINIKUBE_IP: "192.168.49.2"  # вставь свой: minikube ip
+
+build-backend:
+  stage: build
+  image: docker:24
+  before_script:
+    - git submodule update --init --recursive
+  script:
+    - docker build -t $REGISTRY/backend:$CI_COMMIT_SHORT_SHA ./CMS
+    - docker push $REGISTRY/backend:$CI_COMMIT_SHORT_SHA
+  tags:
+    - linux
+
+build-frontend:
+  stage: build
+  image: docker:24
+  before_script:
+    - git submodule update --init --recursive
+  script:
+    - docker build --build-arg NEXT_PUBLIC_API_URL=http://$MINIKUBE_IP:8080 -t $REGISTRY/frontend:$CI_COMMIT_SHORT_SHA ./It_project
+    - docker push $REGISTRY/frontend:$CI_COMMIT_SHORT_SHA
+  tags:
+    - linux
+
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - mkdir -p ~/.kube
+    - echo "$KUBECONFIG_CONTENT" | base64 -d > ~/.kube/config
+  script:
+    - kubectl set image deployment/backend backend=$REGISTRY/backend:$CI_COMMIT_SHORT_SHA -n full-proj
+    - kubectl set image deployment/frontend frontend=$REGISTRY/frontend:$CI_COMMIT_SHORT_SHA -n full-proj
+    - kubectl rollout status deployment/backend -n full-proj
+    - kubectl rollout status deployment/frontend -n full-proj
+  only:
+    - main
+  tags:
+    - linux
