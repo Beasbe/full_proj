@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+/* ============================================
+   TAILWIND V4 THEME - OKLCH COLOR FORMAT
+   ============================================ */
+@theme {
+    /* Border thickness */
+    --border-width-thin: 1px;
+    --border-width-default: 2px;
+    --border-width-thick: 4px;
+    --border-width-extra: 6px;
+
+    /* Цвета в формате OKLCH */
+    --color-grape: oklch(0.45 0.2 25);
+    --color-background: oklch(0.96 0 0);
+    --color-border: oklch(0.83 0 0);
+    --color-card: oklch(1 0 0);
+    --color-copy-primary: oklch(0.15 0 0);
+    --color-copy-secondary: oklch(0.5 0 0);
+    --color-cta: oklch(0.65 0.25 270);
+    --color-cta-active: oklch(0.55 0.3 275);
+    --color-cta-text: oklch(1 0 0);
+}
+
+/* ============================================
+   LIGHT THEME (по умолчанию)
+   ============================================ */
+:root,
+.light {
+    --color-grape: oklch(0.6928 0.1771 58.66);
+    --color-background: oklch(0.96 0 0);
+    --color-border: oklch(0.83 0 0);
+    --color-card: oklch(1 0 0);
+    --color-copy-primary: oklch(0.15 0 0);
+    --color-copy-secondary: oklch(0.5 0 0);
+    --color-cta: oklch(0.6928 0.1771 58.66);
+    --color-cta-active: oklch(0.72 0.3 15);
+    --color-cta-text: oklch(1 0 0);
+    background-color: var(--color-background);
+}
+
+/* ============================================
+   DARK THEME
+   ============================================ */
+.dark {
+    --color-grape: oklch(0.6928 0.1771 58.66);
+    --color-orange: oklch(0.75 0.18 58.66);
+
+    --color-background: oklch(0.22 0 0);
+    --color-border: oklch(0.45 0 0);
+    --color-card: oklch(0.32 0 0);
+    --color-copy-primary: oklch(0.98 0 0);
+    --color-copy-secondary: oklch(0.82 0 0);
+    --color-cta: oklch(0.75 0.18 58.66);
+    --color-cta-active: oklch(0.68 0.22 58.66);
+    --color-cta-text: oklch(1 0 0);
+
+    background-color: var(--color-background);
+}
+
+/* ============================================
+   KEYFRAMES
+   ============================================ */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes theme-switch-fade {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ============================================
+   ANIMATION UTILITIES
+   ============================================ */
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse {
+    animation: pulse 0.5s ease;
+}
+
+.animate-slideDown {
+    animation: slideDown 0.3s ease-out;
+}
+
+.animate-theme-switch {
+    animation: theme-switch-fade 0.3s ease-out;
+}
+
+/* ============================================
+   BORDER UTILITIES
+   ============================================ */
+.border-thin {
+    border-width: var(--border-width-thin);
+}
+
+.border-default {
+    border-width: var(--border-width-default);
+}
+
+.border-thick {
+    border-width: var(--border-width-thick);
+}
+
+.border-extra {
+    border-width: var(--border-width-extra);
+}
+
+/* Combined border-color and thickness classes */
+.border-primary-thin,
+.border-primary-default,
+.border-primary-thick {
+    border-color: var(--color-border);
+}
+
+.border-cta-thin,
+.border-cta-default,
+.border-cta-thick {
+    border-color: var(--color-cta);
+}
+
+.border-dashed-thin,
+.border-dashed-default {
+    border-width: var(--border-width-default);
+    border-style: dashed;
+    border-color: var(--color-border);
+}
+
+/* ============================================
+   CUSTOM UTILITIES
+   ============================================ */
+@layer utilities {
+    .transition-theme {
+        transition-property:
+            background-color, border-color, color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 300ms;
+    }
+
+    .transition-slow {
+        transition-duration: 500ms;
+    }
+
+    .transition-fast {
+        transition-duration: 150ms;
+    }
+}
