@@ -38,10 +38,10 @@ jobs:
   deploy:
     runs-on: self-hosted
     needs: [build-backend, build-frontend]
-    steps:
     env:
       NO_PROXY: localhost,127.0.0.0/8,::1,192.168.49.2
       no_proxy: localhost,127.0.0.0/8,::1,192.168.49.2
+    steps:
       - name: Deploy to minikube
         run: |
           kubectl set image deployment/backend \
