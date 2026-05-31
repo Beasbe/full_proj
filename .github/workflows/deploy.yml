@@ -9,14 +9,21 @@ env:
   NO_PROXY: localhost,127.0.0.0/8,::1,192.168.49.2
 
 jobs:
-test-backend:
-  runs-on: self-hosted
-  steps:
-    - run: |
-        docker run localhost:5000/backend:${{ github.sha }} \
-          php artisan test
+  test-backend:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Run tests
+        run: |
+          docker build -t localhost:5000/backend:test ./CMS
+          docker run --rm localhost:5000/backend:test php artisan test
+
   build-backend:
     runs-on: self-hosted
+    needs: [test-backend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,15 +33,7 @@ test-backend:
         run: |
           docker build -t localhost:5000/backend:${{ github.sha }} ./CMS
           docker push localhost:5000/backend:${{ github.sha }}
-      - name: Run migrations
-        run: |
-          kubectl exec -n full-proj \
-          $(kubectl get pod -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}') \
-          -- php artisan migrate --force
-      - name: Deploy
-        run: |
-          kubectl set image deployment/backend ... || \
-          kubectl rollout undo deployment/backend -n full-proj
+
   build-frontend:
     runs-on: self-hosted
     steps:
@@ -54,13 +53,19 @@ test-backend:
     runs-on: self-hosted
     needs: [build-backend, build-frontend]
     steps:
-      - name: Deploy to minikube
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy with Helm
         run: |
-          kubectl set image deployment/backend \
-            backend=localhost:5000/backend:${{ github.sha }} \
-            -n full-proj
-          kubectl set image deployment/frontend \
-            frontend=localhost:5000/frontend:${{ github.sha }} \
-            -n full-proj
-          kubectl rollout status deployment/backend -n full-proj
-          kubectl rollout status deployment/frontend -n full-proj
+          helm upgrade --install full-proj ./helm \
+            --namespace full-proj \
+            --set image.tag=${{ github.sha }} || \
+          helm rollback full-proj -n full-proj
+
+      - name: Run migrations
+        run: |
+          kubectl exec -n full-proj \
+            $(kubectl get pod -n full-proj -l app=backend \
+              -o jsonpath='{.items[0].metadata.name}') \
+            -- php artisan migrate --force
