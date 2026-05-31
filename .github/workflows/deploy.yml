@@ -9,6 +9,12 @@ env:
   NO_PROXY: localhost,127.0.0.0/8,::1,192.168.49.2
 
 jobs:
+test-backend:
+  runs-on: self-hosted
+  steps:
+    - run: |
+        docker run localhost:5000/backend:${{ github.sha }} \
+          php artisan test
   build-backend:
     runs-on: self-hosted
     steps:
@@ -20,7 +26,15 @@ jobs:
         run: |
           docker build -t localhost:5000/backend:${{ github.sha }} ./CMS
           docker push localhost:5000/backend:${{ github.sha }}
-
+      - name: Run migrations
+        run: |
+          kubectl exec -n full-proj \
+          $(kubectl get pod -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}') \
+          -- php artisan migrate --force
+      - name: Deploy
+        run: |
+          kubectl set image deployment/backend ... || \
+          kubectl rollout undo deployment/backend -n full-proj
   build-frontend:
     runs-on: self-hosted
     steps:
