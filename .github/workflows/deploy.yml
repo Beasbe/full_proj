@@ -1,0 +1,51 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-backend:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and push backend
+        run: |
+          docker build -t localhost:5000/backend:${{ github.sha }} ./CMS
+          docker push localhost:5000/backend:${{ github.sha }}
+
+  build-frontend:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and push frontend
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_API_URL=http://${{ secrets.MINIKUBE_IP }}:8080 \
+            -t localhost:5000/frontend:${{ github.sha }} \
+            ./It_project
+          docker push localhost:5000/frontend:${{ github.sha }}
+
+  deploy:
+    runs-on: self-hosted
+    needs: [build-backend, build-frontend]
+    steps:
+      - name: Deploy to minikube
+        run: |
+          kubectl set image deployment/backend \
+            backend=localhost:5000/backend:${{ github.sha }} \
+            -n full-proj
+          kubectl set image deployment/frontend \
+            frontend=localhost:5000/frontend:${{ github.sha }} \
+            -n full-proj
+          kubectl rollout status deployment/backend -n full-proj
+          kubectl rollout status deployment/frontend -n full-proj
