@@ -20,6 +20,7 @@ jobs:
         run: |
           docker run --rm localhost:5000/backend:test \
             php -r "echo 'PHP syntax OK';"
+
   build-backend:
     runs-on: self-hosted
     needs: [test-backend]
@@ -47,26 +48,24 @@ jobs:
             -t localhost:5000/frontend:${{ github.sha }} \
             ./It_project
           docker push localhost:5000/frontend:${{ github.sha }}
-deploy:
+
+  deploy:
     runs-on: self-hosted
     needs: [build-backend, build-frontend]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Deploy with Helm
         run: |
           helm upgrade --install full-proj ./helm \
             --namespace full-proj \
             --set image.tag=${{ github.sha }} || \
           helm rollback full-proj -n full-proj
-
       - name: Wait for backend to be ready
         run: |
           kubectl rollout status deployment/backend \
             -n full-proj \
             --timeout=120s
-
       - name: Run migrations
         run: |
           kubectl exec -n full-proj \
