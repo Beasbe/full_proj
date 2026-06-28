@@ -18,6 +18,10 @@ jobs:
           submodules: recursive
       - name: Check PHP syntax
         run: |
+          docker build \
+            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com,packagist.org \
+            --network host \
+            -t localhost:5000/backend:test ./CMS
           docker run --rm localhost:5000/backend:test \
             php -r "echo 'PHP syntax OK';"
 
@@ -31,7 +35,10 @@ jobs:
           submodules: recursive
       - name: Build and push backend
         run: |
-          docker build -t localhost:5000/backend:${{ github.sha }} ./CMS
+          docker build \
+            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com,packagist.org \
+            --network host \
+            -t localhost:5000/backend:${{ github.sha }} ./CMS
           docker push localhost:5000/backend:${{ github.sha }}
 
   build-frontend:
@@ -44,9 +51,10 @@ jobs:
       - name: Build and push frontend
         run: |
           docker build \
+            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com \
             --build-arg NEXT_PUBLIC_API_URL=http://${{ secrets.MINIKUBE_IP }}:8080 \
-            -t localhost:5000/frontend:${{ github.sha }} \
-            ./It_project
+            --network host \
+            -t localhost:5000/frontend:${{ github.sha }} ./It_project
           docker push localhost:5000/frontend:${{ github.sha }}
 
   deploy:
@@ -55,17 +63,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Deploy with Helm
         run: |
           helm upgrade --install full-proj ./helm \
             --namespace full-proj \
             --set image.tag=${{ github.sha }} || \
           helm rollback full-proj -n full-proj
+
       - name: Wait for backend to be ready
         run: |
           kubectl rollout status deployment/backend \
             -n full-proj \
             --timeout=120s
+
       - name: Run migrations
         run: |
           kubectl exec -n full-proj \
