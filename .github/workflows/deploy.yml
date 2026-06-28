@@ -47,8 +47,7 @@ jobs:
             -t localhost:5000/frontend:${{ github.sha }} \
             ./It_project
           docker push localhost:5000/frontend:${{ github.sha }}
-
-  deploy:
+deploy:
     runs-on: self-hosted
     needs: [build-backend, build-frontend]
     steps:
@@ -61,6 +60,12 @@ jobs:
             --namespace full-proj \
             --set image.tag=${{ github.sha }} || \
           helm rollback full-proj -n full-proj
+
+      - name: Wait for backend to be ready
+        run: |
+          kubectl rollout status deployment/backend \
+            -n full-proj \
+            --timeout=120s
 
       - name: Run migrations
         run: |
