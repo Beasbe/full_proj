@@ -63,23 +63,38 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Deploy with Helm
         run: |
           helm upgrade --install full-proj ./helm \
             --namespace full-proj \
             --set image.tag=${{ github.sha }} || \
           helm rollback full-proj -n full-proj
-
       - name: Wait for backend to be ready
         run: |
           kubectl rollout status deployment/backend \
             -n full-proj \
             --timeout=120s
-
       - name: Run migrations
         run: |
           kubectl exec -n full-proj \
             $(kubectl get pod -n full-proj -l app=backend \
               -o jsonpath='{.items[0].metadata.name}') \
             -- php artisan migrate --force
+
+  deploy-server:
+    runs-on: server
+    needs: [test-backend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Deploy with docker compose
+        env:
+          NO_PROXY: ""
+        run: |
+          docker compose down
+          docker compose up -d --build
+      - name: Run migrations
+        run: |
+          docker compose exec -T app php artisan migrate --force
