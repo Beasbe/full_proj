@@ -15,51 +15,9 @@ data:
         }
 
         location ~ \.php$ {
-            fastcgi_pass backend:9000;
+            fastcgi_pass localhost:9000;
             fastcgi_index index.php;
             fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             include fastcgi_params;
         }
     }
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx
-  namespace: {{ .Values.namespace }}
-spec:
-  replicas: {{ .Values.nginx.replicas }}
-  selector:
-    matchLabels:
-      app: nginx
-  template:
-    metadata:
-      labels:
-        app: nginx
-    spec:
-      containers:
-        - name: nginx
-          image: nginx:alpine
-          ports:
-            - containerPort: {{ .Values.nginx.port }}
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: nginx-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nginx
-  namespace: {{ .Values.namespace }}
-spec:
-  selector:
-    app: nginx
-  ports:
-    - port: {{ .Values.nginx.port }}
-      targetPort: {{ .Values.nginx.port }}
-      nodePort: {{ .Values.nginx.nodePort }}
-  type: NodePort
