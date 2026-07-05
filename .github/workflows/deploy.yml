@@ -42,6 +42,7 @@ jobs:
         run: |
           kubectl exec -n full-proj \
             $(kubectl get pod -n full-proj -l app=backend \
+              --field-selector=status.phase=Running \
               -o jsonpath='{.items[0].metadata.name}') \
             -c backend \
             -- php artisan migrate --force
@@ -50,6 +51,7 @@ jobs:
         run: |
           kubectl exec -n full-proj \
             $(kubectl get pod -n full-proj -l app=backend \
+              --field-selector=status.phase=Running \
               -o jsonpath='{.items[0].metadata.name}') \
             -c backend \
             -- php artisan filament:assets
