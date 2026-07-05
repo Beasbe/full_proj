@@ -27,7 +27,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 COPY . .
-RUN composer install --no-dev --optimize-autoloader 
+RUN composer install --no-dev --optimize-autoloader
+RUN php artisan filament:assets || true
+RUN php artisan storage:link || true
 RUN chown -R www-data:www-data /var/www/html
 USER www-data
 EXPOSE 9000

@@ -47,3 +47,10 @@ jobs:
             $(kubectl get pod -n full-proj -l app=backend \
               -o jsonpath='{.items[0].metadata.name}') \
             -- php artisan migrate --force
+       - name: Publish filament assets
+         run: |
+           kubectl exec -n full-proj \
+              $(kubectl get pod -n full-proj -l app=backend \
+                -o jsonpath='{.items[0].metadata.name}') \
+             -c backend \
+             -- php artisan filament:assets
