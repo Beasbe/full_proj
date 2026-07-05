@@ -5,96 +5,45 @@ on:
     branches:
       - main
 
-env:
-  NO_PROXY: localhost,127.0.0.0/8,::1,192.168.49.2
-
 jobs:
-  test-backend:
-    runs-on: self-hosted
+  deploy-server:
+    runs-on: server
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Check PHP syntax
-        run: |
-          docker build \
-            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com,packagist.org \
-            --network host \
-            -t localhost:5000/backend:test ./CMS
-          docker run --rm localhost:5000/backend:test \
-            php -r "echo 'PHP syntax OK';"
 
-  build-backend:
-    runs-on: self-hosted
-    needs: [test-backend]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Build and push backend
         run: |
           docker build \
-            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com,packagist.org \
             --network host \
             -t localhost:5000/backend:${{ github.sha }} ./CMS
           docker push localhost:5000/backend:${{ github.sha }}
 
-  build-frontend:
-    runs-on: self-hosted
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Build and push frontend
         run: |
           docker build \
-            --build-arg no_proxy=localhost,127.0.0.0/8,::1,codeload.github.com \
-            --build-arg NEXT_PUBLIC_API_URL=http://${{ secrets.MINIKUBE_IP }}:8080 \
             --network host \
+            --build-arg NEXT_PUBLIC_API_URL=http://81.177.48.158:8080 \
             -t localhost:5000/frontend:${{ github.sha }} ./It_project
           docker push localhost:5000/frontend:${{ github.sha }}
 
-  deploy:
-    runs-on: self-hosted
-    needs: [build-backend, build-frontend]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
       - name: Deploy with Helm
         run: |
-          helm upgrade --install full-proj ./helm \
+          helm upgrade --install full-proj ~/full_proj/helm \
             --namespace full-proj \
             --set image.tag=${{ github.sha }} || \
           helm rollback full-proj -n full-proj
-      - name: Wait for backend to be ready
+
+      - name: Wait for backend
         run: |
           kubectl rollout status deployment/backend \
-            -n full-proj \
-            --timeout=120s
+            -n full-proj --timeout=120s
+
       - name: Run migrations
         run: |
           kubectl exec -n full-proj \
             $(kubectl get pod -n full-proj -l app=backend \
               -o jsonpath='{.items[0].metadata.name}') \
             -- php artisan migrate --force
-
-  deploy-server:
-    runs-on: server
-    needs: [test-backend]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Deploy with docker compose
-        env:
-          NO_PROXY: ""
-        run: |
-          docker compose down
-          docker compose up -d --build
-      - name: Run migrations
-        run: |
-          docker compose exec -T app php artisan migrate --force
