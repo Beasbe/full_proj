@@ -13,11 +13,18 @@ spec:
       labels:
         app: backend
     spec:
+      initContainers:
+        - name: copy-public
+          image: {{ .Values.registry }}/backend:{{ .Values.image.tag }}
+          command: ["cp", "-r", "/var/www/html/public/.", "/mnt/public/"]
+          volumeMounts:
+            - name: public-files
+              mountPath: /mnt/public
       containers:
         - name: backend
           image: {{ .Values.registry }}/backend:{{ .Values.image.tag }}
           ports:
-            - containerPort: {{ .Values.backend.port }}
+            - containerPort: 9000
           env:
             - name: APP_ENV
               value: {{ .Values.backend.env.APP_ENV }}
@@ -68,6 +75,26 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: SMTP_FROM
+          volumeMounts:
+            - name: public-files
+              mountPath: /var/www/html/public
+
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+            - name: public-files
+              mountPath: /var/www/html/public
+
+      volumes:
+        - name: public-files
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: nginx-config
 ---
 apiVersion: v1
 kind: Service
@@ -78,5 +105,20 @@ spec:
   selector:
     app: backend
   ports:
-    - port: {{ .Values.backend.port }}
-      targetPort: {{ .Values.backend.port }}
+    - name: fpm
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: {{ .Values.nginx.nodePort }}
+  type: NodePort
