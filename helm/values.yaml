@@ -7,6 +7,13 @@ namespace: full-proj
 
 backend:
   replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
   port: 9000
   env:
     APP_ENV: production
