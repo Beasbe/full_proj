@@ -5,6 +5,8 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.frontend.replicas }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: frontend
