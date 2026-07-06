@@ -29,6 +29,9 @@ WORKDIR /var/www/html
 COPY . .
 RUN composer install --no-dev --optimize-autoloader
 RUN php artisan filament:assets || true
+RUN composer install --no-dev --optimize-autoloader
+RUN php artisan filament:assets || true
+RUN php artisan livewire:publish --assets || true
 RUN php artisan storage:link || true
 RUN chown -R www-data:www-data /var/www/html
 USER www-data
