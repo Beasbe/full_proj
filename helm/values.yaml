@@ -1,5 +1,4 @@
-registry: localhost:5000
-
+registry: ghcr.io/beasbe/full_proj
 image:
   tag: latest
 
