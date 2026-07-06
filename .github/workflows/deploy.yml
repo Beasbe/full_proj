@@ -1,23 +1,18 @@
 name: CI/CD
-
 on:
   push:
     branches:
       - main
-
 permissions:
   contents: read
   packages: write
-
 jobs:
   deploy:
     runs-on: server
-
     defaults:
       run:
         shell: bash
         working-directory: ${{ github.workspace }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,7 +33,6 @@ jobs:
             -t ghcr.io/beasbe/full_proj/backend:${{ github.sha }} \
             -t ghcr.io/beasbe/full_proj/backend:latest \
             ./CMS
-
           docker push ghcr.io/beasbe/full_proj/backend:${{ github.sha }}
           docker push ghcr.io/beasbe/full_proj/backend:latest
 
@@ -50,7 +44,6 @@ jobs:
             -t ghcr.io/beasbe/full_proj/frontend:${{ github.sha }} \
             -t ghcr.io/beasbe/full_proj/frontend:latest \
             ./It_project
-
           docker push ghcr.io/beasbe/full_proj/frontend:${{ github.sha }}
           docker push ghcr.io/beasbe/full_proj/frontend:latest
 
@@ -60,8 +53,17 @@ jobs:
             --namespace full-proj \
             --create-namespace \
             --set image.tag=${{ github.sha }} \
+            --set-string secrets.APP_KEY="${{ secrets.APP_KEY }}" \
+            --set-string secrets.DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --set-string secrets.SMTP_HOST="${{ secrets.SMTP_HOST }}" \
+            --set-string secrets.SMTP_PORT="${{ secrets.SMTP_PORT }}" \
+            --set-string secrets.SMTP_USER="${{ secrets.SMTP_USER }}" \
+            --set-string secrets.SMTP_PASS="${{ secrets.SMTP_PASS }}" \
+            --set-string secrets.SMTP_FROM="${{ secrets.SMTP_FROM }}" \
+            --set-string secrets.TO_EMAIL="${{ secrets.TO_EMAIL }}" \
             --wait \
-            --timeout 10m
+            --timeout 10m \
+            --history-max 3
 
       - name: Wait Backend
         run: |
