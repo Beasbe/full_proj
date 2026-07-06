@@ -10,11 +10,17 @@ permissions:
   packages: write
 
 jobs:
-  deploy-server:
+  deploy:
     runs-on: server
 
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -25,7 +31,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build backend
+      - name: Build & Push Backend
         run: |
           docker build \
             --network host \
@@ -33,12 +39,10 @@ jobs:
             -t ghcr.io/beasbe/full_proj/backend:latest \
             ./CMS
 
-      - name: Push backend
-        run: |
           docker push ghcr.io/beasbe/full_proj/backend:${{ github.sha }}
           docker push ghcr.io/beasbe/full_proj/backend:latest
 
-      - name: Build frontend
+      - name: Build & Push Frontend
         run: |
           docker build \
             --network host \
@@ -47,34 +51,31 @@ jobs:
             -t ghcr.io/beasbe/full_proj/frontend:latest \
             ./It_project
 
-      - name: Push frontend
-        run: |
           docker push ghcr.io/beasbe/full_proj/frontend:${{ github.sha }}
           docker push ghcr.io/beasbe/full_proj/frontend:latest
 
-      - name: Deploy with Helm
+      - name: Deploy
         run: |
-          helm upgrade --install full-proj ~/full_proj/helm \
+          helm upgrade --install full-proj ./helm \
             --namespace full-proj \
-            --set image.tag=${{ github.sha }}
+            --create-namespace \
+            --set image.tag=${{ github.sha }} \
+            --wait \
+            --timeout 10m
 
-      - name: Wait backend
+      - name: Wait Backend
         run: |
           kubectl rollout status deployment/backend -n full-proj --timeout=300s
 
-      - name: Run migrations
+      - name: Migrate DB
         run: |
-          kubectl exec -n full-proj \
-            $(kubectl get pod -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}') \
-            -c backend \
-            -- php artisan migrate --force
+          POD=$(kubectl get pods -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n full-proj "$POD" -c backend -- php artisan migrate --force
 
-      - name: Publish filament assets
+      - name: Publish Filament Assets
         run: |
-          kubectl exec -n full-proj \
-            $(kubectl get pod -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}') \
-            -c backend \
-            -- php artisan filament:assets
+          POD=$(kubectl get pods -n full-proj -l app=backend -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n full-proj "$POD" -c backend -- php artisan filament:assets
 
       - name: Cleanup Docker
         run: |
