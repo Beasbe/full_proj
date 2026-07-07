@@ -91,6 +91,7 @@ jobs:
             --set-string secrets.APP_KEY="${{ secrets.APP_KEY }}" \
             --set-string secrets.DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
             --set-string secrets.DB_ROOT_PASSWORD="${{ secrets.DB_ROOT_PASSWORD }}" \
+            --set-string secrets.APP_URL="${{ secrets.APP_URL }}" \
             --set-string secrets.SMTP_HOST="${{ secrets.SMTP_HOST }}" \
             --set-string secrets.SMTP_PORT="${{ secrets.SMTP_PORT }}" \
             --set-string secrets.SMTP_USER="${{ secrets.SMTP_USER }}" \
