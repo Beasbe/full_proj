@@ -1,0 +1,161 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: server
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      ########################################
+      # BUILD IMAGES
+      ########################################
+
+      - name: Build Backend
+        run: |
+          docker build \
+            --network host \
+            -t ghcr.io/beasbe/full_proj/backend:${{ github.sha }} \
+            -t ghcr.io/beasbe/full_proj/backend:latest \
+            ./CMS
+
+      - name: Push Backend
+        run: |
+          docker push ghcr.io/beasbe/full_proj/backend:${{ github.sha }}
+          docker push ghcr.io/beasbe/full_proj/backend:latest
+
+      - name: Build Frontend
+        run: |
+          docker build \
+            --network host \
+            --build-arg NEXT_PUBLIC_API_URL=http://81.177.48.158:8080 \
+            -t ghcr.io/beasbe/full_proj/frontend:${{ github.sha }} \
+            -t ghcr.io/beasbe/full_proj/frontend:latest \
+            ./It_project
+
+      - name: Push Frontend
+        run: |
+          docker push ghcr.io/beasbe/full_proj/frontend:${{ github.sha }}
+          docker push ghcr.io/beasbe/full_proj/frontend:latest
+
+      ########################################
+      # UNLOCK HELM
+      ########################################
+
+      - name: Unlock stuck Helm release
+        run: |
+          STATUS=$(helm status full-proj -n full-proj 2>/dev/null | grep STATUS: | awk '{print $2}' || true)
+
+          if [[ "$STATUS" == pending-* ]]; then
+            echo "Helm release is stuck: $STATUS"
+
+            kubectl delete secret -n full-proj \
+              $(kubectl get secret -n full-proj -o name | grep sh.helm.release || true) \
+              || true
+          fi
+
+      ########################################
+      # DEPLOY
+      ########################################
+
+      - name: Helm Deploy
+        run: |
+          helm upgrade --install full-proj ./helm \
+            --namespace full-proj \
+            --create-namespace \
+            --history-max 3 \
+            --set image.tag=${{ github.sha }} \
+            --set-string secrets.APP_KEY="${{ secrets.APP_KEY }}" \
+            --set-string secrets.DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --set-string secrets.DB_ROOT_PASSWORD="${{ secrets.DB_ROOT_PASSWORD }}" \
+            --set-string secrets.SMTP_HOST="${{ secrets.SMTP_HOST }}" \
+            --set-string secrets.SMTP_PORT="${{ secrets.SMTP_PORT }}" \
+            --set-string secrets.SMTP_USER="${{ secrets.SMTP_USER }}" \
+            --set-string secrets.SMTP_PASS="${{ secrets.SMTP_PASS }}" \
+            --set-string secrets.SMTP_FROM="${{ secrets.SMTP_FROM }}" \
+            --set-string secrets.TO_EMAIL="${{ secrets.TO_EMAIL }}"
+
+      ########################################
+      # WAIT
+      ########################################
+
+      - name: Wait MySQL
+        run: |
+          kubectl rollout status deployment/mysql -n full-proj --timeout=300s
+
+      - name: Wait Backend
+        run: |
+          kubectl rollout status deployment/backend -n full-proj --timeout=300s
+
+      - name: Wait Frontend
+        run: |
+          kubectl rollout status deployment/frontend -n full-proj --timeout=300s
+
+      ########################################
+      # MIGRATIONS
+      ########################################
+
+      ########################################
+      # DEBUG
+      ########################################
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "========== PODS =========="
+          kubectl get pods -n full-proj -o wide
+
+          echo
+          echo "========== DEPLOYMENTS =========="
+          kubectl get deploy -n full-proj
+
+          echo
+          echo "========== EVENTS =========="
+          kubectl get events -n full-proj --sort-by=.lastTimestamp
+
+          echo
+          echo "========== DESCRIBE =========="
+          for p in $(kubectl get pods -n full-proj -o name); do
+            echo "----- $p -----"
+            kubectl describe $p -n full-proj
+          done
+
+          echo
+          echo "========== LOGS =========="
+          for p in $(kubectl get pods -n full-proj -o name); do
+            echo "----- $p -----"
+            kubectl logs $p -n full-proj --all-containers=true --tail=100 || true
+          done
+
+      ########################################
+      # CLEANUP
+      ########################################
+
+      - name: Cleanup Docker
+        if: always()
+        run: |
+          docker image prune -af || true
+          docker builder prune -af || true
