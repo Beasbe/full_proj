@@ -61,7 +61,8 @@ jobs:
             --set-string secrets.SMTP_PASS="${{ secrets.SMTP_PASS }}" \
             --set-string secrets.SMTP_FROM="${{ secrets.SMTP_FROM }}" \
             --set-string secrets.TO_EMAIL="${{ secrets.TO_EMAIL }}" \
-            --wait \
+            --set-string secrets.DB_ROOT_PASSWORD="${{ secrets.DB_ROOT_PASSWORD }}" \
+            -wait \
             --timeout 10m \
             --history-max 3
 

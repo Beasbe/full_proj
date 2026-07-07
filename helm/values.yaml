@@ -48,3 +48,4 @@ secrets:
   SMTP_PASS: ""
   SMTP_FROM: ""
   TO_EMAIL: ""
+  DB_ROOT_PASSWORD: ""
