@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-{{ .Release.Revision }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+      - name: migrate
+        image: {{ .Values.registry }}/backend:{{ .Values.image.tag }}
+        imagePullPolicy: IfNotPresent
+
+        command:
+        - sh
+        - -c
+        - |
+          php artisan migrate --force
+
+        envFrom:
+        - secretRef:
+            name: app-secrets
+
+        env:
+        - name: APP_ENV
+          value: {{ .Values.backend.env.APP_ENV }}
+
+        - name: APP_DEBUG
+          value: {{ .Values.backend.env.APP_DEBUG | quote }}
+
+        - name: DB_HOST
+          value: {{ .Values.backend.env.DB_HOST }}
+
+        - name: DB_PORT
+          value: {{ .Values.backend.env.DB_PORT | quote }}
+
+        - name: DB_DATABASE
+          value: {{ .Values.backend.env.DB_DATABASE }}
+
+        - name: DB_USERNAME
+          value: {{ .Values.backend.env.DB_USERNAME }}
