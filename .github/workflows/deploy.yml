@@ -51,7 +51,7 @@ jobs:
         run: |
           docker build \
             --network host \
-            --build-arg NEXT_PUBLIC_API_URL=http://81.177.48.158:8080 \
+            --build-arg NEXT_PUBLIC_API_URL=http://81.177.48.158 \
             -t ghcr.io/beasbe/full_proj/frontend:${{ github.sha }} \
             -t ghcr.io/beasbe/full_proj/frontend:latest \
             ./It_project
