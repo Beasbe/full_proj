@@ -5,7 +5,6 @@ metadata:
   namespace: {{ .Values.namespace }}
 spec:
   replicas: {{ .Values.backend.replicas }}
-  
   strategy:
     type: Recreate
   selector:
@@ -19,10 +18,16 @@ spec:
       initContainers:
         - name: copy-public
           image: {{ .Values.registry }}/backend:{{ .Values.image.tag }}
-          command: ["cp", "-r", "/var/www/html/public/.", "/mnt/public/"]
+          command:
+            - sh
+            - -c
+            - |
+              cp -r /var/www/html/public/. /mnt/public/
+              ln -sfn /var/www/html/storage/app/public /mnt/public/storage
           volumeMounts:
             - name: public-files
               mountPath: /mnt/public
+
       containers:
         - name: backend
           image: {{ .Values.registry }}/backend:{{ .Values.image.tag }}
@@ -58,6 +63,11 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: APP_KEY
+            - name: APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: APP_URL
             - name: MAIL_MAILER
               value: smtp
             - name: MAIL_HOST
@@ -65,11 +75,6 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: SMTP_HOST
-            - name: APP_URL
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: APP_URL
             - name: MAIL_PORT
               valueFrom:
                 secretKeyRef:
@@ -93,6 +98,8 @@ spec:
           volumeMounts:
             - name: public-files
               mountPath: /var/www/html/public
+            - name: laravel-storage
+              mountPath: /var/www/html/storage/app/public
 
         - name: nginx
           image: nginx:alpine
@@ -110,6 +117,8 @@ spec:
               mountPath: /etc/nginx/conf.d
             - name: public-files
               mountPath: /var/www/html/public
+            - name: laravel-storage
+              mountPath: /var/www/html/storage/app/public
 
       volumes:
         - name: public-files
@@ -117,6 +126,9 @@ spec:
         - name: nginx-config
           configMap:
             name: nginx-config
+        - name: laravel-storage
+          persistentVolumeClaim:
+            claimName: storage-pvc
 ---
 apiVersion: v1
 kind: Service
