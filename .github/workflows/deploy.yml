@@ -87,6 +87,7 @@ jobs:
             --namespace full-proj \
             --create-namespace \
             --history-max 3 \
+            --timeout 15m \
             --set image.tag=${{ github.sha }} \
             --set-string secrets.APP_KEY="${{ secrets.APP_KEY }}" \
             --set-string secrets.DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
