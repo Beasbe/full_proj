@@ -11,7 +11,8 @@ class Cors
             'http://127.0.0.1:8000',
             'http://localhost:3000',
             'http://81.177.48.158:3000',
-            'http://81.177.48.158:8080',
+	    'http://81.177.48.158:8080',
+	    'http://81.177.48.158:30560',
         ];
 
         $origin = $request->headers->get('Origin');
