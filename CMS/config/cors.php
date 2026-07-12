@@ -8,7 +8,9 @@ return [
     "allowed_origins" => [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:8080",
+	"http://localhost:8080",
+	"http://81.177.48.158",
+        "http://81.177.48.158:30560",
     ],
 
     "allowed_origins_patterns" => [],
