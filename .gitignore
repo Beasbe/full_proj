@@ -1,1 +1,35 @@
-*.txt
+# ============================================================
+#  Секреты и локальные конфигурации — НИКОГДА не коммитить
+# ============================================================
+.env
+.env.*
+!.env.example
+env.local
+env.local.*
+!env.local.example
+creds/
+*.pem
+*.key
+id_rsa*
+*.p12
+*.pfx
+*.jks
+
+# --- Редакторы / ОС ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# --- Артефакты сборки / данные ---
+*.sqlite
+*.sqlite3
+node_modules/
+vendor/
+.next/
+out/
+build/
+dist/
+*.log

@@ -21,10 +21,12 @@ services:
     container_name: laravel-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: laravel_dev
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_USER: laravel
-      MYSQL_PASSWORD: secret
+      # Креды БД передаются через переменные окружения (см. .env.example).
+      # Значения по умолчанию предназначены ТОЛЬКО для локальной разработки.
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-laravel_dev}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_USER: ${MYSQL_USER:-laravel}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secret}
     ports:
       - "3306:3306"
     volumes:
@@ -94,7 +96,7 @@ services:
       context: ./It_project
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
     container_name: nextjs-frontend
     restart: unless-stopped
     ports:
