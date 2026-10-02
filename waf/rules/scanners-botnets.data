@@ -1,0 +1,77 @@
+# =============================================================================
+#  scanners-botnets.data
+#  Substring patterns matched (case-insensitively) against the User-Agent
+#  header of every request. Used by rule 1000001 in REQUEST-899-CUSTOM-WAF.conf.
+#
+#  Rules are evaluated after the "t:lowercase" transformation, therefore every
+#  pattern below MUST be written in lower case.
+#
+#  The list is intentionally focused on security scanners, exploitation
+#  frameworks and tooling commonly used by botnets so it does not break normal
+#  browsers. Extend it as new scanners appear.
+# =============================================================================
+
+# --- vulnerability / web application scanners ---
+nikto
+sqlmap
+sqlninja
+jsql
+xsser
+nmap
+nmap scripting engine
+masscan
+zmap
+zgrab
+w3af
+skipfish
+grabber
+commix
+arachni
+whatweb
+wpscan
+joomscan
+droopescan
+dirbuster
+dirb
+gobuster
+feroxbuster
+wfuzz
+ffuf
+nuclei
+jaeles
+xray
+openvas
+nessus
+acunetix
+netsparker
+qualys
+appscan
+burpcollaborator
+
+# --- internet-wide research / scanning services ---
+censysinspect
+shodan
+internetmeasurement
+netsystemsresearch
+paloalto
+
+# --- botnet / malware characteristic markers ---
+zmeu
+morfeus
+mirai
+hakai
+tsunami
+kaiten
+gafgyt
+bashlite
+qbot
+brickerbot
+iot_reaper
+satori
+
+# --- generic automation libraries frequently abused by botnets ---
+# (commented out by default because legitimate integrations may use them)
+# python-requests
+# python-urllib
+# libwww-perl
+# go-http-client

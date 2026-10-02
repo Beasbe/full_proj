@@ -1,0 +1,108 @@
+# =============================================================================
+#  Nginx server configuration template for the ModSecurity WAF container.
+#
+#  This is the stock template shipped by owasp/modsecurity-crs:nginx-alpine
+#  with one addition: a shared-memory rate-limit zone and a `limit_req`
+#  directive applied to static resources. It implements the second custom WAF
+#  feature of the lab — detection/mitigation of an abnormally high request
+#  rate to static assets (application-layer DDoS).
+#
+#  It is mounted (read-only) at:
+#     /etc/nginx/templates/conf.d/default.conf.template
+#  and rendered by the container's entrypoint (envsubst).
+# =============================================================================
+
+# --- WAF custom rule: L7 DDoS protection ------------------------------------
+# Shared-memory zone tracking static-resource requests per client IP.
+# 30 requests/second per IP on average, with a burst allowance of 60.
+limit_req_zone $binary_remote_addr zone=static_per_ip:10m rate=30r/s;
+
+server_tokens ${SERVER_TOKENS};
+
+more_set_headers 'Server: ${SERVER_HEADER}';
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen ${PORT} default_server;
+
+    server_name ${SERVER_NAME};
+    set $always_redirect ${NGINX_ALWAYS_TLS_REDIRECT};
+
+    PROXY_SSL_CONFIG
+
+    # Static resources are rate limited and answered with HTTP 429 when a
+    # single client IP exceeds the configured rate/burst.
+    location ~* \.(?:css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|eot|otf|mp4|webm|ogg|mp3|pdf)$ {
+        limit_req zone=static_per_ip burst=60 nodelay;
+        limit_req_status 429;
+        limit_req_log_level warn;
+        include includes/proxy_backend.conf;
+    }
+
+    location / {
+        client_max_body_size 0;
+
+        if ($always_redirect = on) {
+            return 301 https://$host$request_uri;
+        }
+
+        include includes/cors.conf;
+        include includes/proxy_backend.conf;
+
+        index index.html index.htm;
+        root /usr/share/nginx/html;
+    }
+
+    include includes/location_common.conf;
+
+}
+
+server {
+    listen ${SSL_PORT} ssl;
+    HTTP3_CONFIG
+
+    server_name ${SERVER_NAME};
+
+    ssl_certificate ${SSL_CERT_FILE};
+    ssl_certificate_key ${SSL_CERT_KEY_FILE};
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:MozSSL:10m;
+    ssl_session_tickets off;
+
+    ssl_dhparam /etc/ssl/certs/dhparam-${SSL_DH_BITS}.pem;
+
+    ssl_protocols ${SSL_PROTOCOLS};
+    ssl_ciphers ${SSL_CIPHERS};
+    ssl_prefer_server_ciphers ${SSL_PREFER_CIPHERS};
+
+    ssl_stapling ${SSL_OCSP_STAPLING};
+    ssl_stapling_verify ${SSL_OCSP_STAPLING};
+
+    ssl_verify_client ${SSL_VERIFY};
+    ssl_verify_depth ${SSL_VERIFY_DEPTH};
+
+    PROXY_SSL_CONFIG
+
+    location ~* \.(?:css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|eot|otf|mp4|webm|ogg|mp3|pdf)$ {
+        limit_req zone=static_per_ip burst=60 nodelay;
+        limit_req_status 429;
+        limit_req_log_level warn;
+        include includes/proxy_backend.conf;
+    }
+
+    location / {
+        client_max_body_size 0;
+
+        include includes/cors.conf;
+        include includes/proxy_backend.conf;
+
+        index index.html index.htm;
+        root /usr/share/nginx/html;
+    }
+
+    include includes/location_common.conf;
+}

@@ -32,13 +32,13 @@ services:
     networks:
       - laravel-network
 
-  # Nginx
+  # Nginx (serves the Laravel application).
+  # NOTE: it is no longer published on the host directly. All external traffic
+  # must go through the WAF service below, which reverse-proxies to it.
   webserver:
     image: nginx:alpine
     container_name: nginx-server
     restart: unless-stopped
-    ports:
-      - "8080:80"
     volumes:
       - ./CMS:/var/www/html
       - ./CMS/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -47,13 +47,54 @@ services:
     depends_on:
       - app
 
+  # ModSecurity WAF (Nginx + ModSecurity v3 + OWASP Core Rule Set).
+  # Exposed on :8080 and reverse-proxies every request to the `webserver`
+  # service, so all application traffic is inspected before reaching Laravel.
+  waf:
+    image: owasp/modsecurity-crs:nginx-alpine
+    container_name: modsecurity-waf
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Upstream application server
+      BACKEND: "http://webserver:80"
+      PORT: "8080"
+      SERVER_NAME: "localhost"
+      # ModSecurity engine: On (blocking). Set to DetectionOnly to only log.
+      MODSEC_RULE_ENGINE: "On"
+      # OWASP CRS paranoia levels (1 = default / least false positives)
+      PARANOIA: "1"
+      DETECTION_PARANOIA: "1"
+      BLOCKING_PARANOIA: "1"
+      # Anomaly score thresholds used for blocking
+      ANOMALY_INBOUND: "5"
+      ANOMALY_OUTBOUND: "4"
+      # Audit logging: JSON events of blocked/suspicious requests to stdout
+      MODSEC_AUDIT_ENGINE: "RelevantOnly"
+      MODSEC_AUDIT_LOG: "/dev/stdout"
+      MODSEC_AUDIT_LOG_FORMAT: "JSON"
+      MODSEC_AUDIT_LOG_RELEVANT_STATUS: "^(?:5|4(?!04))"
+      # Allow large uploads (kept in line with the app's 100M limit)
+      MODSEC_REQ_BODY_LIMIT: "104857600"
+      MODSEC_REQ_BODY_NOFILES_LIMIT: "104857600"
+    volumes:
+      - ./waf/rules/custom-waf.conf:/opt/owasp-crs/rules/REQUEST-899-CUSTOM-WAF.conf:ro
+      - ./waf/rules/scanners-botnets.data:/opt/owasp-crs/rules/scanners-botnets.data:ro
+      # Custom server config: adds the static-resource rate limit (L7 DDoS)
+      - ./waf/nginx/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+    networks:
+      - laravel-network
+    depends_on:
+      - webserver
+
   # Next.js
   frontend:
     build:
       context: ./It_project
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=http://81.177.48.158:8080
+        - NEXT_PUBLIC_API_URL=http://localhost:8080
     container_name: nextjs-frontend
     restart: unless-stopped
     ports:
@@ -61,7 +102,10 @@ services:
     networks:
       - laravel-network
     depends_on:
-      - webserver
+      - waf
+    environment:
+      - NODE_ENV=production
+
 networks:
   laravel-network:
     driver: bridge
