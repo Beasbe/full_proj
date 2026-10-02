@@ -38,9 +38,10 @@
 
 ```bash
 # в рабочем дереве и во всей истории нет утёкших значений
-grep -rIlE '7WYtxBsP|tvhhpbgncugmyrji' . --exclude-dir=.git || echo OK
-git log --all --oneline -S 'tvhhpbgncugmyrji'        # пусто
-git log --all --oneline -S '7WYtxBsP'                # пусто
+# (значения утёкших SMTP/SSH-секретов замените на свои паттерны)
+grep -rIlE 'REDACTED_SMTP_PASS|REDACTED_SSH_PASS' . --exclude-dir=.git || echo OK
+git log --all --oneline -S 'REDACTED_SMTP_PASS'        # пусто
+git log --all --oneline -S 'REDACTED_SSH_PASS'        # пусто
 ```
 
 ## 4. Роадмап

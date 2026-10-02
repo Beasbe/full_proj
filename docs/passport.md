@@ -53,7 +53,7 @@ K8s-контур: `Traefik Ingress → Service nginx (NodePort 30080) → backen
 |---|---|---|---|
 | WAF | `owasp/modsecurity-crs:nginx-alpine` перед nginx; правило 1000001 (сканеры/ботнеты по UA); `limit_req` на статику (L7-DDoS → 429); audit-лог JSON | защита прикладного уровня, точки входа не обойти (порт webserver закрыт) | `./waf/tests/run-tests.sh` → 18/18; `python3 waf/tests/ddos_static.py` → 429; `docker logs modsecurity-waf` |
 | CI/CD | GitHub Actions: build → GHCR → helm deploy → rollout waits → debug | воспроизводимый деплой без ручных шагов | push в `main` → успешный run |
-| Безопасность секретов | env/Secret/CI-secrets; история очищена от утёкших секретов | требование кейса | `grep -r 'tvhhpbgncugmyrji'` → пусто; gitleaks (роадмап) |
+| Безопасность секретов | env/Secret/CI-secrets; история очищена от утёкших секретов | требование кейса | `grep -r 'REDACTED'` → пусто; gitleaks (роадмап) |
 
 ---
 
