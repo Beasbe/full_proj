@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: server
+    # self-hosted runner (Ubuntu 24.04 с docker/kubectl/helm).
+    # Имя можно переопределить репозиторной переменной RUNNER_LABEL
+    # (при переносе на новый GitHub — настройте runner и переменные, см. MIGRATION.md).
+    runs-on: ${{ vars.RUNNER_LABEL || 'server' }}
 
     defaults:
       run:
@@ -20,8 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Login GHCR
         uses: docker/login-action@v3
@@ -38,28 +39,28 @@ jobs:
         run: |
           docker build \
             --network host \
-            -t ghcr.io/beasbe/full_proj/backend:${{ github.sha }} \
-            -t ghcr.io/beasbe/full_proj/backend:latest \
+            -t ghcr.io/${{ github.repository }}/backend:${{ github.sha }} \
+            -t ghcr.io/${{ github.repository }}/backend:latest \
             ./CMS
 
       - name: Push Backend
         run: |
-          docker push ghcr.io/beasbe/full_proj/backend:${{ github.sha }}
-          docker push ghcr.io/beasbe/full_proj/backend:latest
+          docker push ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/backend:latest
 
       - name: Build Frontend
         run: |
           docker build \
             --network host \
-            --build-arg NEXT_PUBLIC_API_URL=http://81.177.48.158 \
-            -t ghcr.io/beasbe/full_proj/frontend:${{ github.sha }} \
-            -t ghcr.io/beasbe/full_proj/frontend:latest \
+            --build-arg NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8080' }} \
+            -t ghcr.io/${{ github.repository }}/frontend:${{ github.sha }} \
+            -t ghcr.io/${{ github.repository }}/frontend:latest \
             ./It_project
 
       - name: Push Frontend
         run: |
-          docker push ghcr.io/beasbe/full_proj/frontend:${{ github.sha }}
-          docker push ghcr.io/beasbe/full_proj/frontend:latest
+          docker push ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/frontend:latest
 
       ########################################
       # UNLOCK HELM
@@ -89,6 +90,7 @@ jobs:
             --history-max 3 \
             --timeout 15m \
             --set image.tag=${{ github.sha }} \
+            --set registry=ghcr.io/${{ github.repository }} \
             --set-string secrets.APP_KEY="${{ secrets.APP_KEY }}" \
             --set-string secrets.DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
             --set-string secrets.DB_ROOT_PASSWORD="${{ secrets.DB_ROOT_PASSWORD }}" \

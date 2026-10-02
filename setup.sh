@@ -47,15 +47,11 @@ check_dependencies
 echo "Запуск настройки проекта (Laravel + Filament + Next.js)"
 echo "========================================================="
 
-# 1. Клонируем фронтенд-репозиторий (если ещё не клонирован)
-if [ ! -f "It_project/package.json" ] || [ ! -f "It_project/Dockerfile" ]; then
-    echo "Клонирование фронтенд-репозитория..."
-    if [ -d "It_project" ]; then
-        rm -rf It_project
-    fi
-    git clone https://github.com/Beasbe/It_project.git
-else
-    echo "Фронтенд-репозиторий уже загружен, пропускаем клонирование"
+# 1. Фронтенд поставляется в составе репозитория (папка It_project/)
+if [ ! -f "It_project/package.json" ]; then
+    echo "Ошибка: не найдена папка It_project/ с фронтендом."
+    echo "Фронтенд входит в состав репозитория — убедитесь, что он склонирован целиком."
+    exit 1
 fi
 # 2. Подготовка .env файлов
 echo "Настройка конфигурации..."
@@ -66,9 +62,9 @@ if [ ! -f "CMS/.env" ] && [ -f "CMS/.env.example" ]; then
     echo "CMS/.env создан"
 fi
 
-# Next.js frontend
-if [ ! -f "It_project/.env.local" ] && [ -f "It_project/.env.local.example" ]; then
-    cp It_project/.env.local.example It_project/.env.local
+# Next.js frontend (пример: It_project/env.local.example)
+if [ ! -f "It_project/.env.local" ] && [ -f "It_project/env.local.example" ]; then
+    cp It_project/env.local.example It_project/.env.local
     echo "It_project/.env.local создан"
     echo "Внимание: Не забудьте заполнить SMTP-данные в It_project/.env.local для отправки писем"
 fi

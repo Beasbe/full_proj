@@ -1,4 +1,7 @@
-registry: ghcr.io/beasbe/full_proj
+# Registry с образами. При переносе репозитория на новый GitHub замените
+# на ghcr.io/<новый-org>/<новый-repo> или переопределите в CI:
+#   --set registry=ghcr.io/${{ github.repository }}
+registry: ghcr.io/YOUR_ORG/YOUR_REPO
 image:
   tag: latest
 
@@ -26,7 +29,9 @@ frontend:
   replicas: 1
   port: 3000
   nodePort: 30560
-  apiUrl: "http://192.168.49.2:30080"
+  # Адрес API бэкенда. NEXT_PUBLIC_API_URL вшивается во фронтенд на этапе
+  # сборки образа (см. CI), это значение - переопределение для рантайма.
+  apiUrl: "http://localhost:8080"
 
 nginx:
   replicas: 1

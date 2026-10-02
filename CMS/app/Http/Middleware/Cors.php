@@ -7,16 +7,12 @@ class Cors
 {
     public function handle($request, Closure $next)
     {
-        $allowedOrigins = [
-            'http://127.0.0.1:8000',
-            'http://localhost:3000',
-            'http://81.177.48.158:3000',
-	    'http://81.177.48.158:8080',
-	    'http://81.177.48.158:30560',
-        ];
+        // Список разрешённых Origin задаётся через env CORS_ALLOWED_ORIGINS
+        // (см. config/cors.php). Хардкода IP конкретного стенда быть не должно.
+        $allowedOrigins = (array) config('cors.allowed_origins', ['http://localhost:3000']);
 
         $origin = $request->headers->get('Origin');
-        $allowOrigin = in_array($origin, $allowedOrigins) ? $origin : $allowedOrigins[0];
+        $allowOrigin = in_array($origin, $allowedOrigins, true) ? $origin : ($allowedOrigins[0] ?? '');
 
         if ($request->isMethod('OPTIONS')) {
             return response('', 204)

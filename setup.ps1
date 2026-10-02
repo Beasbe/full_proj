@@ -50,12 +50,11 @@ Check-Dependencies
 Write-Host "Запуск настройки проекта (Laravel + Filament + Next.js)"
 Write-Host "========================================================="
 
-# 1. Клонируем фронтенд-репозиторий
-if (!(Test-Path "It_project")) {
-    Write-Host "Клонирование фронтенд-репозитория..."
-    git clone https://github.com/Beasbe/It_project.git
-} else {
-    Write-Host "Фронтенд-репозиторий уже существует, пропускаем клонирование"
+# 1. Фронтенд поставляется в составе репозитория (папка It_project/)
+if (!(Test-Path "It_project/package.json")) {
+    Write-Host "Ошибка: не найдена папка It_project с фронтендом." -ForegroundColor Red
+    Write-Host "Фронтенд входит в состав репозитория — убедитесь, что он склонирован целиком." -ForegroundColor Yellow
+    exit 1
 }
 
 # 2. Подготовка .env файлов
@@ -67,9 +66,9 @@ if (!(Test-Path "CMS/.env") -and (Test-Path "CMS/.env.example")) {
     Write-Host "CMS/.env создан"
 }
 
-# Next.js frontend
-if (!(Test-Path "It_project/.env.local") -and (Test-Path "It_project/.env.local.example")) {
-    Copy-Item It_project/.env.local.example It_project/.env.local
+# Next.js frontend (пример: It_project/env.local.example)
+if (!(Test-Path "It_project/.env.local") -and (Test-Path "It_project/env.local.example")) {
+    Copy-Item It_project/env.local.example It_project/.env.local
     Write-Host "It_project/.env.local создан"
     Write-Host "Внимание: Не забудьте заполнить SMTP-данные в It_project/.env.local для отправки писем"
 }
