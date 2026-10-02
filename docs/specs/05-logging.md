@@ -1,4 +1,4 @@
-# SPEC-05 — Логирование (Fluentd / Filebeat)
+# SPEC-05 — Логирование (Fluent Bit → Loki)
 
 > Источник требований: кейс «MTC ENGINEER HACK», раздел 5 «Логирование».
 
@@ -6,57 +6,49 @@
 
 | | |
 |---|---|
-| Статус | ⚠️ **Частично**: access/error-логи формируются, централизованный сбор Fluentd/Filebeat — ❌ роадмап |
+| Статус | ✅ **Реализовано и проверено** |
+| Стек | Fluent Bit v5.1.3 (DaemonSet) → Loki v3.6.12 (single-binary, filesystem) |
 
 ## 1. Требования (из кейса)
 
 | ID | Требование | Статус |
 |----|-----------|--------|
-| FR-LOG-1 | Сбор access/error-логов приложения | ⚠️ логи пишутся в stdout, агент не настроен |
-| FR-LOG-2 | Передача логов в хранилище/точку назначения | ❌ |
-| FR-LOG-3 | После обращения к приложению запись появляется в собранных логах | ❌ |
-| FR-LOG-4 | README: какие логи, куда, как проверить | ⚠️ статус зафиксирован |
+| FR-LOG-1 | Сбор access/error-логов приложения | ✅ nginx/WAF → stdout → Fluent Bit |
+| FR-LOG-2 | Передача логов в хранилище | ✅ Loki (namespace `logging`) |
+| FR-LOG-3 | После обращения к приложению запись появляется в логах | ✅ проверено (ниже) |
+| FR-LOG-4 | README: какие логи, куда, как проверить | ✅ ниже |
 
-## 2. Текущее состояние
+## 2. Реализация
 
-- nginx (`webserver`, `waf`) и Next.js (`frontend`) пишут access/error-логи в stdout/stderr
-  контейнеров — это требование FR-APP-3 выполнено на уровне приложения.
-- Логи Laravel — `CMS/storage/logs` (в K8s — внутрь пода, см. ограничения).
-- Проверка сейчас:
+- **Источники**: access/error-логи nginx (поды `backend`, `waf`), audit-лог WAF
+  (JSON с ID сработавших правил ModSecurity), логи Laravel/Next.js — всё в stdout/stderr.
+- **Fluent Bit** (`infra/logging/fluentbit-values.yaml`): DaemonSet, input `tail`
+  на `/var/log/containers/*.log` с CRI-парсером, filter `kubernetes` (обогащение
+  метками namespace/pod/container), output `loki` → `loki.logging.svc:3100`.
+- **Loki** (`infra/logging/loki-values.yaml`): single-binary, `filesystem` TSDB,
+  PVC 2Gi (local-path), без gateway/ruler/caches (минимальный профиль).
 
-```bash
-docker compose logs -f webserver        # access-логи nginx
-docker compose logs -f modsecurity-waf  # audit-лог WAF (JSON)
-kubectl logs -n full-proj deploy/nginx --tail=20
-```
-
-## 3. Роадмап внедрения (Filebeat → Elasticsearch или Fluent Bit → Loki)
-
-Предлагаемый вариант (без коммерческих сервисов, поддерживает Ubuntu 24.04):
-
-```bash
-# fluent-bit DaemonSet читает логи контейнеров (containerd /var/log/containers)
-helm repo add fluent https://fluent.github.io/helm-charts
-helm install fluent-bit fluent/fluent-bit \
-  --namespace logging --create-namespace \
-  --set output.loki.enabled=true \
-  --set output.loki.host=http://loki.logging.svc:3100
-```
-
-Проверка экспертом после внедрения:
+## 3. Верификация (фактические результаты)
 
 ```bash
 # 1. Обратиться к приложению
-curl -s http://<node-ip>:30080/api/news > /dev/null
-# 2. Запись появляется в собранных логах
-kubectl logs -n logging ds/fluent-bit --tail=20 | grep '/api/news'
-# (при Loki: запрос через Grafana Explore)
+curl -s http://localhost:30080/api/news?logtest=1 > /dev/null
+
+# 2. Запись появляется в Loki
+kubectl port-forward -n logging svc/loki 3100:3100
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={namespace="full-proj"}' \
+  --data-urlencode 'limit=5' | jq '.data.result[] | .stream.pod'
+# backend-... | waf-... — access-логи с запросом /api/news?logtest=1
+
+# 3. Фильтр по контейнеру WAF (audit-лог с ID правил)
+curl -G 'http://localhost:3100/loki/api/v1/query_range' \
+  --data-urlencode 'query={namespace="full-proj", container="modsecurity-waf"}'
 ```
 
-## 4. Ограничения
+## 4. Роадмап
 
-- Логи приложения Laravel в K8s-контуре не перенаправлены в stdout контейнера `backend`
-  (пишутся в `storage/logs` внутрь пода) — для сбора нужно добавить вывод в stdout
-  (`LOG_CHANNEL=stderr` или tail-сайдкар); в Compose они доступны через том `./CMS`.
-- Раздел кейса №5 считается выполненным только после появления «записи в собранных
-  логах после обращения к приложению».
+- Grafana (Explore) как UI для Loki;
+- retention/compaction для долгого хранения; перенос storage в S3-совместимое
+  хранилище для масштабирования;
+- логи Laravel (`storage/logs`) в stdout (`LOG_CHANNEL=stderr`) для сбора вне пода.

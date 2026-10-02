@@ -18,6 +18,13 @@ spec:
           image: mysql:8
           ports:
             - containerPort: {{ .Values.mysql.port }}
+          resources:
+            requests:
+              memory: {{ .Values.mysql.resources.requests.memory }}
+              cpu: {{ .Values.mysql.resources.requests.cpu }}
+            limits:
+              memory: {{ .Values.mysql.resources.limits.memory }}
+              cpu: {{ .Values.mysql.resources.limits.cpu }}
           env:
             - name: MYSQL_DATABASE
               value: {{ .Values.mysql.database }}

@@ -20,6 +20,13 @@ spec:
           image: {{ .Values.registry }}/frontend:{{ .Values.image.tag }}
           ports:
             - containerPort: {{ .Values.frontend.port }}
+          resources:
+            requests:
+              memory: {{ .Values.frontend.resources.requests.memory }}
+              cpu: {{ .Values.frontend.resources.requests.cpu }}
+            limits:
+              memory: {{ .Values.frontend.resources.limits.memory }}
+              cpu: {{ .Values.frontend.resources.limits.cpu }}
           env:
             - name: NEXT_PUBLIC_API_URL
               value: {{ .Values.frontend.apiUrl }}

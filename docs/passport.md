@@ -9,28 +9,27 @@
 
 | Параметр | Значение |
 |---|---|
-| Версия Kubernetes | k3s v1.28 (Kubernetes v1.28) |
-| Способ развёртывания K8s | k3s (`get.k3s.io`), манифесты `k8s/` + Helm-чарт `helm/` |
-| Реализация Gateway API | **не используется** (сейчас Traefik Ingress + NodePort); роадмап — Traefik Gateway Provider ([SPEC-03](specs/03-gateway-api.md)) |
-| Инструменты автоматизации | `setup.sh` / `setup.ps1`, Docker Compose, Helm, GitHub Actions (self-hosted runner) |
-| Логирование | access/error-логи nginx → stdout; Fluentd/Filebeat — роадмап ([SPEC-05](specs/05-logging.md)) |
-| Prometheus | не развёрнут — роадмап kube-prometheus-stack ([SPEC-04](specs/04-monitoring.md)) |
-| ОС тестирования | Ubuntu 24.04 LTS |
-| Доп. улучшения | **WAF ModSecurity + OWASP CRS** (✅ реализован), CI/CD (✅), параметризация секретов (✅) |
+| Версия Kubernetes | **k3s v1.36.5 (Kubernetes v1.36.5)**, containerd 2.3.4 |
+| Способ развёртывания K8s | k3s (`get.k3s.io`), всё приложение — Helm-чарты, одна команда `./scripts/deploy.sh` |
+| Реализация Gateway API | **Traefik v3.7.13** (Gateway API v1.5.1): GatewayClass `traefik`, Gateway `full-proj-gateway` (PROGRAMMED), HTTPRoute `full-proj-route` |
+| Инструменты автоматизации | `scripts/build-images.sh`, `scripts/deploy.sh`, Helm, GitHub Actions (подготовлен) |
+| Логирование | **Fluent Bit v5.1.3 (DaemonSet) → Loki v3.6.12** (filesystem + PVC) |
+| Prometheus | **Prometheus v3.15** + node-exporter + kube-state-metrics + nginx-exporter приложения |
+| ОС тестирования | Ubuntu 24.04.5 LTS |
+| Доп. улучшения | **WAF ModSecurity + OWASP CRS** (✅ в k8s и Compose), метрики приложения (✅), безопасность секретов (✅) |
 
 ### Архитектурная схема
 
 ```mermaid
 flowchart LR
-    U[Пользователь] -->|:8080| WAF[WAF: nginx + ModSecurity + OWASP CRS]
-    WAF --> WS[webserver: nginx]
-    WS --> A[app: Laravel 10 php-fpm]
-    A --> D[(MariaDB)]
-    F[Next.js :3000] -.->|API| WAF
+    U[Пользователь] -->|:30080| G[Traefik Gateway API]
+    G -->|HTTPRoute| WAF[WAF ModSecurity + CRS]
+    WAF --> NX[nginx + Laravel]
+    NX --> DB[(MySQL + PVC)]
+    FE[Next.js :30560] -.->|API| G
+    P[Prometheus] --> NX
+    NX -.->|логи| FB[Fluent Bit] --> L[(Loki)]
 ```
-
-K8s-контур: `Traefik Ingress → Service nginx (NodePort 30080) → backend :9000 → mysql (+PVC)`,
-`frontend` — NodePort 30560. Образы собираются CI и публикуются в GHCR.
 
 ---
 
@@ -40,42 +39,43 @@ K8s-контур: `Traefik Ingress → Service nginx (NodePort 30080) → backen
 
 | Требование кейса | Как реализовано | Обоснование | Как проверить |
 |---|---|---|---|
-| Веб-приложение в Kubernetes | Deployments backend/frontend/mysql/nginx, PVC, Secret `app-secrets` | стандартные ресурсы, минимальный стек | `kubectl get pods -n full-proj`; `curl <node>:30080/api/news` → 200 JSON |
-| Доступ через Gateway API | ❌ не реализовано | — | — |
-| Prometheus | ❌ не реализовано | — | — |
-| Fluentd/Filebeat | ⚠️ логи nginx в stdout, агент не настроен | — | `kubectl logs -n full-proj deploy/nginx` |
-| Ubuntu 24.04 | стенд k3s + runner на Ubuntu 24.04 | требование кейса | развёртывание по инструкции |
-| Автоматизация | `./setup.sh` (Compose) / Helm `upgrade --install` / CI | минимум команд, идемпотентность | повторный запуск → состояние не ломается |
+| Веб-приложение в Kubernetes | Deployments backend(+nginx+exporter)/frontend/mysql, PVC, Secret `app-secrets`, миграции | стандартные ресурсы, минимальный стек | `kubectl get pods -n full-proj`; `curl localhost:30080/api/news` → 200 JSON |
+| Доступ через Gateway API | Traefik v3: GatewayClass + Gateway (:80) + HTTPRoute → Service waf | open-source, без вендор-лока; Gateway API v1.5.1 | `kubectl get gateway -n full-proj` (PROGRAMMED=True); `curl -s localhost:30080/api/news` |
+| Prometheus собирает метрики | prometheus-чарт + node-exporter + kube-state-metrics + sidecar nginx-exporter (аннотации) | метрики и инфраструктуры, и приложения | `kubectl port-forward -n monitoring svc/prometheus-server 9090:80`; `curl localhost:9090/api/v1/query?query=up`; `nginx_http_requests_total` |
+| Fluent Bit собирает логи | DaemonSet Fluent Bit (CRI-парсер) → Loki single-binary | лёгкий сборщик, централизованное хранилище | после `curl` к приложению: Loki API `{namespace="full-proj"}` содержит access-лог |
+| Ubuntu 24.04 | весь стенд развёрнут на Ubuntu 24.04.5 LTS | требование кейса | воспроизведение по `deploy.sh` |
+| Автоматизация | `deploy.sh` (5 шагов, Helm из OCI); повторный запуск идемпотентен | минимум команд, воспроизводимость | `./scripts/deploy.sh` повторно → «has been upgraded», без ошибок |
 
 ### Дополнительные улучшения
 
 | Улучшение | Как реализовано | Обоснование | Как проверить |
 |---|---|---|---|
-| WAF | `owasp/modsecurity-crs:nginx-alpine` перед nginx; правило 1000001 (сканеры/ботнеты по UA); `limit_req` на статику (L7-DDoS → 429); audit-лог JSON | защита прикладного уровня, точки входа не обойти (порт webserver закрыт) | `./waf/tests/run-tests.sh` → 18/18; `python3 waf/tests/ddos_static.py` → 429; `docker logs modsecurity-waf` |
-| CI/CD | GitHub Actions: build → GHCR → helm deploy → rollout waits → debug | воспроизводимый деплой без ручных шагов | push в `main` → успешный run |
-| Безопасность секретов | env/Secret/CI-secrets; история очищена от утёкших секретов | требование кейса | `grep -r 'REDACTED'` → пусто; gitleaks (роадмап) |
+| WAF в k8s | Deployment `waf` (ModSecurity+CRS) — единственный бэкенд HTTPRoute; правило 1000001 (сканеры/ботнеты), `limit_req` на статику (429); ConfigMap'ы в `helm/templates/waf.yaml` | защита прикладного уровня, обойти нельзя (порт nginx закрыт) | `./waf/tests/run-tests.sh http://localhost:30080` → **18/18**; `python3 waf/tests/ddos_static.py` → 429; `kubectl logs deploy/waf` → audit JSON с ruleId |
+| Метрики приложения | nginx-prometheus-exporter sidecar (stub_status) | HTTP-метрики обязательны для observability | PromQL `nginx_http_requests_total` растёт после запросов |
+| Безопасность секретов | env/Secret/CI-secrets; история очищена от утёкших секретов | требование кейса | SPEC-08: git grep по истории пусто |
+| CI/CD | workflow GH Actions (build → GHCR → helm deploy) подготовлен | финал — на завершающем этапе | push в main → pipeline |
 
 ---
 
 ## Страница 3. Ревью работы и потенциальное масштабирование
 
-**Главная особенность решения.** Полноценный WAF (ModSecurity + OWASP CRS + собственные
-правила) как обязательная точка входа трафика с автоматизированными e2e-тестами и
-JSON-аудитом — редкость для учебных работ; вся конфигурация воспроизводима из репозитория.
+**Главная особенность решения.** Полный набор обязательных пунктов кейса в едином
+контуре k3s: Gateway API (Traefik) как единственная точка входа, WAF ModSecurity
+перед приложением, метрики приложения и узла в Prometheus, логи в Loki — всё
+воспроизводится одной командой из чистого репозитория.
 
-**Самое сложное решение.** Реализация частотного ограничения (защита от L7-DDoS):
-коллекции ModSecurity v3 в образе не персистятся между запросами (проверено
-экспериментально), поэтому правило сделано на штатном nginx `limit_req` —
-компромисс между «каноничностью» ModSecurity и реальной работоспособностью
-(зафиксировано как ADR-4 в `waf/SPEC.md`).
+**Самое сложное решение.** Реализация частотного ограничения (L7-DDoS): коллекции
+ModSecurity v3 не персистятся между запросами (проверено экспериментально), поэтому
+правило сделано на nginx `limit_req` (ADR-4 в `waf/SPEC.md`); плюс отладка DNS k3s
+v1.36.x (CoreDNS без env service host/port + конфликт CIDR сервисов с маршрутами VPN —
+зафиксировано в SPEC-01).
 
 **Предложения по дальнейшему развитию:**
 
-1. Внедрить Gateway API (Traefik Gateway Provider: GatewayClass/Gateway/HTTPRoute) — обязательное требование кейса.
-2. Мониторинг: kube-prometheus-stack + nginx-exporter + метрики приложения; Grafana-дашборды.
-3. Логирование: fluent-bit DaemonSet → Loki (+ Grafana Explore); вывод логов Laravel в stdout.
-4. WAF в K8s-контуре (Deployment перед nginx или sidecar) + TLS (cert-manager).
+1. kubeadm-кластер (приоритет кейса) + HA (≥3 узла, внешний etcd).
+2. TLS: cert-manager + HTTPS-listener в Gateway.
+3. Расширенный Gateway API: маршрутизация по path/hostname, несколько бэкендов, traffic splitting.
+4. Grafana-дашборды (Node Exporter Full, nginx, Loki datasource) + алерты.
 5. Security-контур: gitleaks в CI, sealed-secrets, NetworkPolicy, RBAC.
-6. Телком-специфика: горизонтальное масштабирование (HPA по метрикам), геораспределённость,
-   высокая доступность БД (репликация/бэкапы) — потребует внешних систем хранения
-   (S3-совместимые, managed-базы) в зависимости от оператора.
+6. Телком-специфика: HPA по метрикам, геораспределённость, HA БД (репликация/бэкапы,
+   S3-совместимое хранилище логов) — потребует внешней инфраструктуры оператора.

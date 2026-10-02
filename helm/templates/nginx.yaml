@@ -10,6 +10,13 @@ data:
         root /var/www/html/public;
         index index.php index.html;
 
+        # Метрики для nginx-prometheus-exporter (sidecar в этом же поде)
+        location = /stub_status {
+            stub_status;
+            allow 127.0.0.1;
+            deny all;
+        }
+
         location / {
             try_files $uri $uri/ /index.php?$query_string;
         }

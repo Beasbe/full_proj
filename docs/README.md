@@ -10,13 +10,13 @@
 
 | № | Спецификация | Раздел кейса | Статус |
 |---|---|---|---|
-| 01 | [Kubernetes-окружение](specs/01-kubernetes.md) | п.1 | ✅ реализовано (k3s + manifests + Helm) |
+| 01 | [Kubernetes-окружение](specs/01-kubernetes.md) | п.1 | ✅ k3s v1.36.5 + Helm + deploy.sh |
 | 02 | [Демонстрационное веб-приложение](specs/02-application.md) | п.2 | ✅ реализовано |
-| 03 | [Gateway API](specs/03-gateway-api.md) | п.3 | ❌ не реализовано (сейчас Traefik Ingress) |
-| 04 | [Мониторинг (Prometheus)](specs/04-monitoring.md) | п.4 | ❌ не реализовано (роадмап) |
-| 05 | [Логирование (Fluentd/Filebeat)](specs/05-logging.md) | п.5 | ⚠️ частично (логи есть, сборки нет) |
-| 06 | [WAF ModSecurity + OWASP CRS](specs/06-waf.md) | доп. улучшение | ✅ реализовано |
-| 07 | [Автоматизация развёртывания](specs/07-automation.md) | п.7 | ✅ реализовано |
+| 03 | [Gateway API](specs/03-gateway-api.md) | п.3 | ✅ Traefik v3.7.13: GatewayClass + Gateway + HTTPRoute |
+| 04 | [Мониторинг (Prometheus)](specs/04-monitoring.md) | п.4 | ✅ Prometheus + node-exporter + kube-state-metrics + nginx-exporter |
+| 05 | [Логирование (Fluent Bit → Loki)](specs/05-logging.md) | п.5 | ✅ Fluent Bit DaemonSet → Loki |
+| 06 | [WAF ModSecurity + OWASP CRS](specs/06-waf.md) | доп. улучшение | ✅ в Compose и в Kubernetes |
+| 07 | [Автоматизация развёртывания](specs/07-automation.md) | п.7 | ✅ deploy.sh, идемпотентность проверена |
 | 08 | [Безопасность и секреты](specs/08-security.md) | требования безопасности | ✅ реализовано |
 | 09 | [Перенос на новый GitHub](specs/09-migration.md) | подготовка к сдаче | ✅ подготовлено |
 
@@ -25,38 +25,29 @@
 ## Архитектура
 
 ```mermaid
-flowchart TB
-    U[Пользователь] -->|HTTP :8080| WAF[WAF: nginx + ModSecurity + OWASP CRS]
-    WAF -->|reverse proxy| WS[webserver: nginx]
-    WS -->|FastCGI :9000| APP[app: php-fpm Laravel 10]
-    APP --> DB[(MariaDB 10.11)]
-    FE[nextjs-frontend :3000] -.->|API :8080| WAF
-
-    subgraph K8S[Kubernetes k3s, namespace full-proj]
-        ING[Traefik Ingress] --> NGX[Service nginx :80 / NodePort 30080]
-        NGX --> B[Deployment backend :9000]
-        B --> M[(Deployment mysql + PVC)]
-        F[Deployment frontend :3000 / NodePort 30560]
-    end
+flowchart LR
+    U[Пользователь] -->|:30080 NodePort| G[Traefik v3 Gateway API]
+    G -->|HTTPRoute| WAF[WAF: ModSecurity + OWASP CRS]
+    WAF -->|reverse proxy| NX[nginx + Laravel php-fpm]
+    NX --> DB[(MySQL + PVC)]
+    FE[Next.js :30560] -.->|API :30080| G
+    NX -->|:9113 stub_status| P[Prometheus + node-exporter + kube-state-metrics]
+    NX -.->|stdout access-log| FB[Fluent Bit DaemonSet] --> L[(Loki)]
 ```
 
-Два контура развёртывания:
-
-1. **Docker Compose** (разработка/демонстрация): `waf` — единственная точка входа на бэкенд
-   (порт `webserver` не публикуется), `frontend` — на `:3000`.
-2. **Kubernetes** (стенд, Ubuntu 24.04): k3s + raw-манифесты (`k8s/`) или Helm-чарт (`helm/`),
-   доступ через Traefik Ingress / NodePort, образы из GHCR, деплой через GitHub Actions.
+Все компоненты — в кластере **k3s v1.36.5** (Ubuntu 24.04.5 LTS),
+развёртывание одной командой `./scripts/deploy.sh` (Helm-чарты из OCI ghcr.io).
 
 ## Матрица трассируемости требований кейса
 
 | Требование кейса | Статус | Где проверять |
 |---|---|---|
-| веб-приложение в Kubernetes | ✅ | [SPEC-02](specs/02-application.md), [SPEC-01](specs/01-kubernetes.md) |
-| доступ через Kubernetes Gateway API | ❌ роадмап | [SPEC-03](specs/03-gateway-api.md) |
-| Prometheus собирает метрики | ❌ роадмап | [SPEC-04](specs/04-monitoring.md) |
-| Fluentd/Filebeat собирает логи | ⚠️ роадмап | [SPEC-05](specs/05-logging.md) |
+| веб-приложение в Kubernetes | ✅ | [SPEC-01](specs/01-kubernetes.md), [SPEC-02](specs/02-application.md) |
+| доступ через Kubernetes Gateway API | ✅ | [SPEC-03](specs/03-gateway-api.md) — `curl http://localhost:30080/api/news` |
+| Prometheus собирает метрики | ✅ | [SPEC-04](specs/04-monitoring.md) — `up`, `nginx_http_requests_total` |
+| Fluent Bit собирает логи | ✅ | [SPEC-05](specs/05-logging.md) — Loki API после запроса |
 | Ubuntu 24.04 | ✅ | [SPEC-01](specs/01-kubernetes.md), [SPEC-07](specs/07-automation.md) |
-| автоматизация, воспроизводимость | ✅ | [SPEC-07](specs/07-automation.md) |
+| автоматизация, воспроизводимость, идемпотентность | ✅ | [SPEC-07](specs/07-automation.md) |
 | README + паспорт решения | ✅ | [README](../readme.md), [passport.md](passport.md) |
 | нет секретов в репозитории | ✅ | [SPEC-08](specs/08-security.md) |
-| дополнительные улучшения | WAF ✅, CI/CD ✅ | [SPEC-06](specs/06-waf.md), [SPEC-07](specs/07-automation.md) |
+| дополнительные улучшения | WAF ✅, метрики приложения ✅, CI/CD ⚠️ финал | [SPEC-06](specs/06-waf.md), [SPEC-04](specs/04-monitoring.md) |

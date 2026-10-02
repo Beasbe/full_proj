@@ -14,6 +14,11 @@ spec:
     metadata:
       labels:
         app: backend
+      # Аннотации для сбора метрик Prometheus (nginx-prometheus-exporter sidecar)
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9113"
+        prometheus.io/path: "/metrics"
     spec:
       initContainers:
         - name: copy-public
@@ -95,6 +100,8 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: SMTP_FROM
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ .Values.backend.env.CORS_ALLOWED_ORIGINS | quote }}
           volumeMounts:
             - name: public-files
               mountPath: /var/www/html/public
@@ -119,6 +126,21 @@ spec:
               mountPath: /var/www/html/public
             - name: laravel-storage
               mountPath: /var/www/html/storage/app/public
+
+        # Экспортёр метрик nginx (stub_status) для Prometheus
+        - name: nginx-exporter
+          image: nginx/nginx-prometheus-exporter:1.4.0
+          args:
+            - -nginx.scrape-uri=http://127.0.0.1/stub_status
+          ports:
+            - containerPort: 9113
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
 
       volumes:
         - name: public-files
@@ -154,5 +176,6 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-      nodePort: {{ .Values.nginx.nodePort }}
-  type: NodePort
+  # Внешний доступ только через Gateway API -> WAF (Service waf).
+  # NodePort у nginx убран, чтобы трафик не мог обойти WAF.
+  type: ClusterIP

@@ -1,0 +1,39 @@
+# Prometheus: сбор метрик инфраструктуры и приложения.
+# Установка:
+#   helm install prometheus oci://ghcr.io/prometheus-community/charts/prometheus -n monitoring --create-namespace -f infra/prometheus/values.yaml
+# Проверка: kubectl port-forward -n monitoring svc/prometheus-server 9090:80
+#
+# Чарт включает (subcharts): node-exporter, kube-state-metrics, pushgateway.
+# Дефолтные scrape-джобы чарта (kubernetes-nodes, kubernetes-nodes-cadvisor,
+# kubernetes-pods и др.) собирают метрики автоматически; pod с аннотациями
+# prometheus.io/scrape: "true" (наш nginx-exporter sidecar) подхватывается
+# джобой kubernetes-pods.
+
+alertmanager:
+  enabled: false
+
+# pushgateway не нужен — отключаем ради экономии ресурсов
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  retention: "3d"
+  persistentVolume:
+    enabled: false
+  resources:
+    requests:
+      memory: "192Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Дополнительные цели сбора метрик:
+#   * node-exporter (CPU/RAM/диски узла) — встроенный subchart;
+#   * nginx-exporter — sidecar в поде приложения (аннотации prometheus.io/*,
+#     подхватывается дефолтной джобой kubernetes-pods).
+scrapeConfigs:
+  node-exporter:
+    static_configs:
+      - targets:
+          - prometheus-prometheus-node-exporter.monitoring.svc.cluster.local:9100

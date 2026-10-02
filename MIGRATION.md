@@ -61,12 +61,12 @@ Runner должен иметь доступ к kubeconfig кластера k3s.
 
 ## 5. Что обновить после переноса
 
-- [ ] `Ссылка.txt` (архив сдачи) — актуальная ссылка на ветку `main` нового репозитория;
-- [ ] `docs/specs/01-kubernetes.md` — фактическая версия k3s/Kubernetes стенда;
-- [ ] `docs/passport.md` — версия Kubernetes, если изменилась;
-- [ ] IP/домен стенда в `NEXT_PUBLIC_API_URL` (Variable, не хардкод);
-- [ ] `CORS_ALLOWED_ORIGINS` (CMS `.env`/Secret) — домены фронтенда нового стенда;
-- [ ] разовые значения SMTP — как Secrets.
+- [x] `Ссылка.txt` (архив сдачи) — актуальная ссылка на ветку `main` нового репозитория;
+- [x] `docs/specs/01-kubernetes.md` — фактическая версия k3s/Kubernetes стенда Ответ: переделываем под k3s;
+- [x] `docs/passport.md` — версия Kubernetes, если изменилась;
+- [x] IP/домен стенда в `NEXT_PUBLIC_API_URL` (Variable, не хардкод);
+- [x] `CORS_ALLOWED_ORIGINS` (CMS `.env`/Secret) — домены фронтенда нового стенда;
+- [x] разовые значения SMTP — как Secrets.
 
 ## 6. Проверка после переноса
 

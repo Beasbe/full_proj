@@ -1,0 +1,228 @@
+{{- /* WAF: ModSecurity + OWASP CRS (nginx-alpine). Источник конфигов: waf/ в корне репозитория. */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-custom-rules
+  namespace: {{ .Values.namespace }}
+data:
+  # Содержимое повторяет waf/rules/custom-waf.conf (имя файла обеспечивает
+  # загрузку ДО OWASP CRS: "REQUEST-899" сортируется раньше "REQUEST-901...").
+  REQUEST-899-CUSTOM-WAF.conf: |
+    SecRule REQUEST_HEADERS:User-Agent "@pmFromFile /opt/owasp-crs/rules/scanners-botnets.data" \
+        "id:1000001,\
+        phase:1,\
+        t:lowercase,\
+        deny,\
+        status:403,\
+        log,\
+        msg:'Blocked: known vulnerability scanner / botnet User-Agent',\
+        severity:'CRITICAL',\
+        tag:'custom-waf',\
+        tag:'scanner-detection',\
+        ver:'lab-custom-rules/1.0'"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-scanners-data
+  namespace: {{ .Values.namespace }}
+data:
+  # Содержимое повторяет waf/rules/scanners-botnets.data (шаблоны в нижнем регистре)
+  scanners-botnets.data: |
+    nikto
+    sqlmap
+    sqlninja
+    jsql
+    xsser
+    nmap
+    nmap scripting engine
+    masscan
+    zmap
+    zgrab
+    w3af
+    skipfish
+    grabber
+    commix
+    arachni
+    whatweb
+    wpscan
+    joomscan
+    droopescan
+    dirbuster
+    dirb
+    gobuster
+    feroxbuster
+    wfuzz
+    ffuf
+    nuclei
+    jaeles
+    xray
+    openvas
+    nessus
+    acunetix
+    netsparker
+    qualys
+    appscan
+    burpcollaborator
+    censysinspect
+    shodan
+    internetmeasurement
+    netsystemsresearch
+    paloalto
+    zmeu
+    morfeus
+    mirai
+    hakai
+    tsunami
+    kaiten
+    gafgyt
+    bashlite
+    qbot
+    brickerbot
+    iot_reaper
+    satori
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-nginx-template
+  namespace: {{ .Values.namespace }}
+data:
+  # Содержимое повторяет waf/nginx/default.conf.template
+  # (limit_req на статику -> HTTP 429 при превышении 30 r/s, burst 60)
+  default.conf.template: |
+    limit_req_zone $binary_remote_addr zone=static_per_ip:10m rate=30r/s;
+
+    server_tokens ${SERVER_TOKENS};
+
+    more_set_headers 'Server: ${SERVER_HEADER}';
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+    server {
+        listen ${PORT} default_server;
+
+        server_name ${SERVER_NAME};
+        set $always_redirect ${NGINX_ALWAYS_TLS_REDIRECT};
+
+        PROXY_SSL_CONFIG
+
+        location ~* \.(?:css|js|mjs|map|png|jpe?g|gif|svg|webp|avif|ico|bmp|woff2?|ttf|eot|otf|mp4|webm|ogg|mp3|pdf)$ {
+            limit_req zone=static_per_ip burst=60 nodelay;
+            limit_req_status 429;
+            limit_req_log_level warn;
+            include includes/proxy_backend.conf;
+        }
+
+        location / {
+            client_max_body_size 0;
+
+            if ($always_redirect = on) {
+                return 301 https://$host$request_uri;
+            }
+
+            include includes/cors.conf;
+            include includes/proxy_backend.conf;
+
+            index index.html index.htm;
+            root /usr/share/nginx/html;
+        }
+
+        include includes/location_common.conf;
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waf
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.waf.replicas }}
+  selector:
+    matchLabels:
+      app: waf
+  template:
+    metadata:
+      labels:
+        app: waf
+    spec:
+      containers:
+        - name: modsecurity-waf
+          image: {{ .Values.waf.image }}
+          ports:
+            - containerPort: {{ .Values.waf.port }}
+          resources:
+            requests:
+              memory: {{ .Values.waf.resources.requests.memory }}
+              cpu: {{ .Values.waf.resources.requests.cpu }}
+            limits:
+              memory: {{ .Values.waf.resources.limits.memory }}
+              cpu: {{ .Values.waf.resources.limits.cpu }}
+          env:
+            - name: BACKEND
+              value: {{ .Values.waf.backend }}
+            - name: PORT
+              value: {{ .Values.waf.port | quote }}
+            - name: SERVER_NAME
+              value: {{ .Values.waf.serverName }}
+            # ModSecurity: On (блокирующий режим) / DetectionOnly (только логи)
+            - name: MODSEC_RULE_ENGINE
+              value: {{ .Values.waf.modsecRuleEngine | quote }}
+            - name: PARANOIA
+              value: {{ .Values.waf.paranoia | quote }}
+            - name: DETECTION_PARANOIA
+              value: {{ .Values.waf.paranoia | quote }}
+            - name: BLOCKING_PARANOIA
+              value: {{ .Values.waf.paranoia | quote }}
+            - name: ANOMALY_INBOUND
+              value: {{ .Values.waf.anomalyInbound | quote }}
+            - name: ANOMALY_OUTBOUND
+              value: {{ .Values.waf.anomalyOutbound | quote }}
+            # Audit-лог (JSON) в stdout -> kubectl logs
+            - name: MODSEC_AUDIT_ENGINE
+              value: "RelevantOnly"
+            - name: MODSEC_AUDIT_LOG
+              value: "/dev/stdout"
+            - name: MODSEC_AUDIT_LOG_FORMAT
+              value: "JSON"
+            - name: MODSEC_AUDIT_LOG_RELEVANT_STATUS
+              value: "^(?:5|4(?!04))"
+            - name: MODSEC_REQ_BODY_LIMIT
+              value: "104857600"
+            - name: MODSEC_REQ_BODY_NOFILES_LIMIT
+              value: "104857600"
+          volumeMounts:
+            - name: custom-rules
+              mountPath: /opt/owasp-crs/rules/REQUEST-899-CUSTOM-WAF.conf
+              subPath: REQUEST-899-CUSTOM-WAF.conf
+            - name: scanners-data
+              mountPath: /opt/owasp-crs/rules/scanners-botnets.data
+              subPath: scanners-botnets.data
+            - name: nginx-template
+              mountPath: /etc/nginx/templates/conf.d/default.conf.template
+              subPath: default.conf.template
+      volumes:
+        - name: custom-rules
+          configMap:
+            name: waf-custom-rules
+        - name: scanners-data
+          configMap:
+            name: waf-scanners-data
+        - name: nginx-template
+          configMap:
+            name: waf-nginx-template
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: waf
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: waf
+  ports:
+    - port: {{ .Values.waf.port }}
+      targetPort: {{ .Values.waf.port }}

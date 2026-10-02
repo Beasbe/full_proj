@@ -6,53 +6,58 @@
 
 | | |
 |---|---|
-| Статус | ❌ **Не реализовано** — GAP (роадмап ниже) |
+| Статус | ✅ **Реализовано и проверено** |
+| Стек | Prometheus v3.15.0 (чарт prometheus-community/prometheus 29.35.0), node-exporter, kube-state-metrics |
 
 ## 1. Требования (из кейса)
 
 | ID | Требование | Статус |
 |----|-----------|--------|
-| FR-MON-1 | Prometheus развёрнут, собирает метрики минимум одного компонента | ❌ |
-| FR-MON-2 | Target доступен Prometheus | ❌ |
-| FR-MON-3 | Продемонстрировано получение метрик Prometheus query | ❌ |
-| FR-MON-4 | README: какие метрики собираются и как их проверить | ⚠️ статус GAP зафиксирован |
+| FR-MON-1 | Prometheus развёрнут, собирает метрики минимум одного компонента | ✅ |
+| FR-MON-2 | Target доступен Prometheus | ✅ (см. матрицу ниже) |
+| FR-MON-3 | Продемонстрировано получение метрик Prometheus query | ✅ ниже |
+| FR-MON-4 | README: какие метрики собираются и как проверить | ✅ ниже |
 
-## 2. Роадмап внедрения
+## 2. Реализация
 
-1. Развернуть стек мониторинга (Helm, без коммерческих сервисов):
+- Prometheus развёрнут Helm-чартом в namespace `monitoring`
+  (`infra/prometheus/values.yaml`, retentiion 3d, без PV — emptyDir);
+- встроенные subcharts чарта: **node-exporter** (DaemonSet, hostNetwork) и
+  **kube-state-metrics**; pushgateway/alertmanager отключены;
+- дефолтные scrape-джобы чарта собирают: kubelet (`kubernetes-nodes`),
+  **cadvisor** (`kubernetes-nodes-cadvisor`), apiserver, kube-state-metrics;
+- **метрики приложения**: sidecar `nginx-prometheus-exporter:1.4.0` в поде
+  `backend` (читает `stub_status` nginx), подхватывается джобой `kubernetes-pods`
+  по аннотациям `prometheus.io/scrape: "true"`, порт 9113.
+
+| Job | Компонент | Метрики |
+|---|---|---|
+| `node-exporter` | узел | CPU/RAM/диск/сеть |
+| `kubernetes-nodes-cadvisor` | kubelet | метрики контейнеров (CPU/RAM) |
+| `kubernetes-pods` | nginx приложения | `nginx_http_requests_total` (кол-во запросов), соединения |
+| `kubernetes-service-endpoints` | kube-state-metrics | состояние подов/деплойментов |
+| `kubernetes-nodes` / `kubernetes-api-servers` | k8s | состояние кластера |
+
+## 3. Верификация (фактические результаты)
 
 ```bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install kube-prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring --create-namespace
+kubectl port-forward -n monitoring svc/prometheus-server 9090:80
+
+# все цели живы
+curl 'http://localhost:9090/api/v1/query?query=up' | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, value: .value[1]}'
+# node-exporter ... -> 1; kubernetes-pods instance=10.42.0.10:9113 -> 1; и т.д.
+
+# метрики приложения: после обращений к приложению счётчик растёт
+curl 'http://localhost:9090/api/v1/query?query=nginx_http_requests_total'
+# {host="", status=""} -> N запросов (растёт после каждого curl к :30080)
+
+# инфраструктурные метрики
+curl 'http://localhost:9090/api/v1/query?query=node_memory_MemAvailable_bytes/1024/1024'
+curl 'http://localhost:9090/api/v1/query?query=rate(container_cpu_usage_seconds_total[5m])'
 ```
 
-2. Метрики, которые планируется собирать:
-   - **инфраструктура**: `node-exporter` (CPU/RAM/диски), kube-state-metrics (поды/деплойменты);
-   - **приложение**: nginx — через `nginx-prometheus-exporter` (stub_status) либо
-     `nginx-vts`; в перспективе — HTTP-метрики Laravel (пакет `spatie/laravel-prometheus`):
-     количество запросов, HTTP-коды, latency.
+## 4. Роадмап
 
-3. Проверка экспертом:
-
-```bash
-kubectl port-forward -n monitoring svc/kube-prometheus-prometheus 9090:9090
-curl 'http://localhost:9090/api/v1/query?query=up' | jq '.data.result[] | {job: .metric.job, value: .value[1]}'
-# PromQL для проверки:
-#   up{job="nginx"}                  — доступность экспортёра nginx
-#   rate(http_requests_total[5m])    — интенсивность запросов
-#   process_cpu_seconds_total        — CPU
-```
-
-4. Обновить README: список метрик и команды проверки (заполнить по факту внедрения).
-
-## 3. Текущее состояние
-
-Сбор метрик отсутствует. Косвенно доступны: audit-лог WAF (JSON, `docker logs modsecurity-waf`)
-и логи nginx — они не являются метриками Prometheus, но могут использоваться для отладки.
-
-## 4. Ограничения
-
-- Раздел кейса №4 не выполнен; внедрение Prometheus — обязательный шаг роадмапа.
-- Для финальной сдачи метрики должны быть реально собираемыми и проверяемыми
-  (критерий «наличие реально собираемых метрик»).
+- Grafana + дашборды (Node Exporter Full, nginx);
+- HTTP-метрики Laravel (пакет `spatie/laravel-prometheus`): коды ответов, latency;
+- алерты (Alertmanager), ServiceMonitor/operator при переносе на kube-prometheus-stack.

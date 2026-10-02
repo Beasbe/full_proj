@@ -33,3 +33,4 @@ out/
 build/
 dist/
 *.log
+local-secrets.yaml

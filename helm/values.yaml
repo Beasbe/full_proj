@@ -1,6 +1,7 @@
 # Registry с образами. При переносе репозитория на новый GitHub замените
 # на ghcr.io/<новый-org>/<новый-repo> или переопределите в CI:
 #   --set registry=ghcr.io/${{ github.repository }}
+# Для локальной разработки: --set registry=localhost:5000/full-proj
 registry: ghcr.io/YOUR_ORG/YOUR_REPO
 image:
   tag: latest
@@ -24,25 +25,70 @@ backend:
     DB_PORT: "3306"
     DB_DATABASE: laravel_dev
     DB_USERNAME: laravel
+    # Разрешённые Origin для CORS (домены фронтенда и гейтвея)
+    CORS_ALLOWED_ORIGINS: "http://localhost:30560,http://localhost:30080"
 
 frontend:
   replicas: 1
   port: 3000
   nodePort: 30560
   # Адрес API бэкенда. NEXT_PUBLIC_API_URL вшивается во фронтенд на этапе
-  # сборки образа (см. CI), это значение - переопределение для рантайма.
-  apiUrl: "http://localhost:8080"
+  # сборки образа (build-arg), это значение - переопределение для рантайма.
+  apiUrl: "http://localhost:30080"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "384Mi"
+      cpu: "500m"
 
 nginx:
   replicas: 1
   port: 80
-  nodePort: 30080
 
 mysql:
   replicas: 1
   port: 3306
   database: laravel_dev
   storage: 1Gi
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "768Mi"
+      cpu: "1000m"
+
+# WAF: ModSecurity + OWASP CRS (nginx-alpine). Единственная точка входа
+# на бэкенд: Gateway API -> HTTPRoute -> Service waf -> Service nginx -> backend.
+waf:
+  replicas: 1
+  # Образ по умолчанию — публичный owasp/modsecurity-crs:nginx-alpine.
+  # Для локального registry: --set waf.image=localhost:5000/full-proj/waf:latest
+  image: owasp/modsecurity-crs:nginx-alpine
+  port: 8080
+  backend: "http://nginx:80"
+  serverName: "localhost"
+  # ModSecurity: On = блокирующий режим; DetectionOnly = только логировать
+  modsecRuleEngine: "On"
+  paranoia: "1"
+  anomalyInbound: "5"
+  anomalyOutbound: "4"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Gateway API: Gateway + HTTPRoute (GatewayClass создаётся отдельно:
+# infra/gateway-api/gatewayclass.yaml)
+gateway:
+  name: full-proj-gateway
+  className: traefik
+  listenerPort: 80
 
 secrets:
   APP_KEY: ""
@@ -54,3 +100,4 @@ secrets:
   SMTP_FROM: ""
   TO_EMAIL: ""
   DB_ROOT_PASSWORD: ""
+  APP_URL: ""

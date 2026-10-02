@@ -6,76 +6,50 @@
 
 | | |
 |---|---|
-| Статус | ❌ **Не реализовано** — GAP. Сейчас доступ через Traefik **Ingress** + NodePort |
-| Текущая реализация доступа | `helm/templates/ingress.yaml` (аннотация `traefik.ingress.kubernetes.io/router.entrypoints: web`), Services `nginx` :30080 / `frontend` :30560 |
+| Статус | ✅ **Реализовано и проверено** |
+| Реализация Gateway API | **Traefik v3.7.13** (провайдер `kubernetesGateway`) |
+| Версия Gateway API | v1.5.1 (стандартный канал CRD) |
+| Используемые ресурсы | `GatewayClass` (`traefik`), `Gateway` (`full-proj-gateway`), `HTTPRoute` (`full-proj-route`) |
+| Внешний доступ | NodePort `30080` (http://&lt;node-ip&gt;:30080) |
 
 ## 1. Требования (из кейса)
 
 | ID | Требование | Статус |
 |----|-----------|--------|
-| FR-GW-1 | Выбрана open-source реализация Gateway API | ❌ |
-| FR-GW-2 | GatewayClass | ❌ |
-| FR-GW-3 | Gateway | ❌ |
-| FR-GW-4 | HTTPRoute → Service приложения | ❌ |
-| FR-GW-5 | Приложение доступно через Gateway API | ❌ |
-| FR-GW-6 | README: название и версия реализации, используемые ресурсы | ⚠️ зафиксирован статус GAP |
-| FR-GW-7 | Команда проверки доступности (curl) | ⚠️ есть для текущего Ingress |
+| FR-GW-1 | Выбрана open-source реализация Gateway API | ✅ Traefik v3 (helm-чарт) |
+| FR-GW-2 | GatewayClass | ✅ `traefik` (создаётся Traefik-чартом) |
+| FR-GW-3 | Gateway | ✅ `full-proj-gateway`, listener HTTP :80, PROGRAMMED=True |
+| FR-GW-4 | HTTPRoute → Service приложения | ✅ `full-proj-route` → Service `waf` :8080 |
+| FR-GW-5 | Приложение доступно через Gateway API | ✅ curl → 200 + JSON (см. верификацию) |
+| FR-GW-6 | README: название/версия реализации, используемые ресурсы | ✅ эта спецификация + [README](../../readme.md) |
+| FR-GW-7 | Команда проверки доступности (curl) | ✅ ниже |
 
-## 2. Обоснование текущего состояния (ADR)
+## 2. Реализация
 
-На этапе сборки решения доступ был организован штатным **Traefik Ingress** — это
-минимальный путь «из коробки» для k3s (Traefik предустановлен в k3s). Переход на
-Gateway API был отложен; в спецификации он зафиксирован как обязательный шаг роадмапа.
+Топология: `Клиент → :30080 (NodePort) → Traefik (Gateway API) → HTTPRoute → Service waf → WAF → Service nginx → php-fpm`.
 
-## 3. Роадмап внедрения Gateway API
+- **GatewayClass** `traefik` (controllerName `traefik.io/gateway-controller`) — создаётся
+  Traefik-чартом при `providers.kubernetesGateway.enabled: true` (`infra/traefik/values.yaml`).
+- **Gateway** `full-proj-gateway` (`helm/templates/gateway.yaml`): listener `http` :80;
+  Traefik сопоставляет listener с entrypoint `web` по порту (`ports.web.port: 80`).
+- **HTTPRoute** `full-proj-route`: `PathPrefix /` → backendRef `waf:8080` — WAF остаётся
+  обязательной точкой входа, порт `nginx` в кластере не публикуется.
+- Traefik-сервис — NodePort `30080` (для k3s без MetalLB; на kubeadm — можно LoadBalancer).
 
-1. Установить в k3s контроллер Gateway API (Traefik v3 поддерживает Gateway API
-   через provider `kubernetesGateway`): `helm install traefik traefik/traefik --values ...`.
-2. Создать ресурсы:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata: { name: traefik }
-spec: { controllerName: traefik.io/gateway-controller }
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata: { name: full-proj-gw, namespace: full-proj }
-spec:
-  gatewayClassName: traefik
-  listeners:
-    - name: web
-      port: 80
-      protocol: HTTP
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata: { name: full-proj-route, namespace: full-proj }
-spec:
-  parentRefs: [{ name: full-proj-gw }]
-  rules:
-    - matches: [{ path: { type: PathPrefix, value: / } }]
-      backendRefs: [{ name: nginx, port: 80 }]
-```
-
-3. Проверка:
+## 3. Верификация (фактические результаты)
 
 ```bash
 kubectl get gatewayclass,gateway,httproute -n full-proj
-curl -s http://<gateway-ip>/api/news   # ожидаемый JSON-ответ приложения
+# GatewayClass traefik; Gateway full-proj-gateway: PROGRAMMED=True, Address: 10.4.17.209
+
+curl -s http://localhost:30080/api/news | head -c 200
+# {"success":true,"data":[{"id":1,"slug":"zapusk-novogo-sajta",...}]}
+
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:30080/        # 200
 ```
 
-4. Обновить README: реализация (Traefik Gateway Provider), версия, используемые ресурсы.
+## 4. Дополнительные возможности (роадмап)
 
-## 4. Верификация текущего состояния (Ingress/NodePort)
-
-```bash
-curl -s http://<node-ip>:30080/api/news     # 200 + JSON (NodePort)
-curl -s -H 'Host: <host>' http://<node-ip>/api/news   # при наличии Ingress-хоста
-```
-
-## 5. Ограничения
-
-- Без Gateway API раздел кейса №3 не может считаться выполненным — это главный
-  известный GAP решения, зафиксирован честно и с планом внедрения выше.
+- несколько бэкендов/маршрутизация по path (напр. `/` → frontend, `/api` → backend);
+- маршрутизация по hostname;
+- TLS через cert-manager (listener HTTPS, `certificateRefs`).

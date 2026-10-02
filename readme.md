@@ -1,14 +1,13 @@
-# full_proj — Laravel CMS + Next.js + WAF (ModSecurity)
+# full_proj — Laravel CMS + Next.js + WAF (ModSecurity) в Kubernetes
 
-Веб-приложение на стеке **Laravel 10 + Filament CMS + Next.js + MariaDB**, защищённое
-WAF **ModSecurity + OWASP CRS**, с двумя способами развёртывания:
+Веб-приложение на стеке **Laravel 10 + Filament CMS + Next.js + MySQL**, защищённое
+WAF **ModSecurity + OWASP CRS**, с полным контуром по кейсу «MTC ENGINEER HACK»:
 
-- **локально / на ВМ** — Docker Compose (одна команда: `./setup.sh`);
-- **в Kubernetes** — raw-манифесты (`k8s/`) или Helm-чарт (`helm/`) + CI/CD (GitHub Actions).
+- **Kubernetes (k3s)** + **Gateway API (Traefik v3)** + **Prometheus** + **Fluent Bit → Loki**;
+- локальная разработка — Docker Compose (`./setup.sh`).
 
-Документация оформлена в подходе **spec-driven development** (требования → критерии приёмки →
-реализация → верификация) на основе технического задания конкурса. Полный комплект
-спецификаций — в [`docs/`](docs/README.md).
+Документация оформлена в подходе **spec-driven development** (требования → критерии
+приёмки → реализация → верификация). Спецификации — в [`docs/`](docs/README.md).
 
 ---
 
@@ -16,77 +15,82 @@ WAF **ModSecurity + OWASP CRS**, с двумя способами развёрт
 
 | Компонент | Реализация / версия |
 |---|---|
-| Kubernetes | **k3s v1.28 (Kubernetes v1.28)** — см. [SPEC-01](docs/specs/01-kubernetes.md); ⚠️ зафиксируйте точную версию стенда при переносе |
-| Способ создания кластера | k3s (`curl -sfL https://get.k3s.io | sh -`) на Ubuntu 24.04; допускается kubeadm |
-| ОС | **Ubuntu 24.04 LTS** (тестовый стенд; Docker-путь — любая ОС с Docker) |
-| Доступ к приложению | Traefik **Ingress** + NodePort (`nginx` :30080, `frontend` :30560); **Gateway API — в роадмапе** ([SPEC-03](docs/specs/03-gateway-api.md)) |
-| Веб-приложение | Laravel 10 (PHP 8.1+), Filament 3, MoonShine, MariaDB 10.11, Next.js 16 / React 19 |
-| Образы | собираются из репозитория (`CMS/Dockerfile`, `It_project/dockerfile`) либо из GHCR |
-| WAF | ModSecurity 3.0.16 + ModSecurity-nginx 1.0.4 + OWASP CRS 3.3.10 (образ `owasp/modsecurity-crs:nginx-alpine`) — [SPEC-06](docs/specs/06-waf.md), [waf/SPEC.md](waf/SPEC.md) |
-| Мониторинг | Prometheus — **в роадмапе** ([SPEC-04](docs/specs/04-monitoring.md)) |
-| Сбор логов | access/error-логи nginx → stdout; Fluentd/Filebeat — **в роадмапе** ([SPEC-05](docs/specs/05-logging.md)) |
-| Автоматизация | `setup.sh` / `setup.ps1` (Compose), Helm-чарт, CI/CD GitHub Actions ([SPEC-07](docs/specs/07-automation.md)) |
-
-> ⚠️ Честный статус: обязательные компоненты кейса (Gateway API, Prometheus, Fluentd/Filebeat)
-> в текущей версии репозитория **не реализованы** — их статус и план внедрения описаны
-> в соответствующих спецификациях. Всё, что заявлено как работающее, можно проверить командами ниже.
+| Kubernetes | **k3s v1.36.5 (Kubernetes v1.36.5)**, containerd 2.3.4 — [SPEC-01](docs/specs/01-kubernetes.md) |
+| Способ создания кластера | `curl -sfL https://get.k3s.io \| sh -s - --disable traefik --disable metrics-server` на Ubuntu 24.04 |
+| ОС | **Ubuntu 24.04.5 LTS** (проверено; Docker-путь — любая ОС с Docker) |
+| Gateway API | **Traefik v3.7.13** (Gateway API v1.5.1): GatewayClass `traefik`, Gateway `full-proj-gateway`, HTTPRoute `full-proj-route` → Service `waf` — [SPEC-03](docs/specs/03-gateway-api.md) |
+| Веб-приложение | Laravel 10 (PHP 8.3), Filament 3, MySQL 8, Next.js 16 / React 19 — [SPEC-02](docs/specs/02-application.md) |
+| Образы | собираются локально (`scripts/build-images.sh` → registry `localhost:5000`) или в GHCR (CI) |
+| WAF | ModSecurity 3.0.17 + OWASP CRS 4.29.0 (`owasp/modsecurity-crs:nginx-alpine`) — [SPEC-06](docs/specs/06-waf.md), [waf/SPEC.md](waf/SPEC.md) |
+| Мониторинг | Prometheus v3.15 + node-exporter + kube-state-metrics + nginx-exporter приложения — [SPEC-04](docs/specs/04-monitoring.md) |
+| Логирование | Fluent Bit v5.1.3 (DaemonSet) → Loki v3.6.12 — [SPEC-05](docs/specs/05-logging.md) |
+| Автоматизация | `scripts/build-images.sh` + `scripts/deploy.sh` (идемпотентно), CI/CD подготовлен — [SPEC-07](docs/specs/07-automation.md) |
 
 ---
+
+## Быстрый старт (Kubernetes, Ubuntu 24.04)
+
+```bash
+# 0. Кластер k3s (один раз)
+curl -sfL https://get.k3s.io | sh -s - --disable traefik --disable metrics-server
+sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/config && chmod 600 ~/.kube/config
+
+# 1. Собрать образы в локальный registry
+./scripts/build-images.sh
+
+# 2. Секреты (из шаблона)
+cp local-secrets.example.yaml local-secrets.yaml   # заполнить APP_KEY и пароли
+
+# 3. Развернуть всё одной командой (Gateway API, WAF, приложение, Prometheus, Loki+Fluent Bit)
+./scripts/deploy.sh
+```
+
+> ⚠️ Если на машине включён VPN с перехватом DNS/подсетей — отключите его
+> (конфликт с сервисной сетью k3s, см. SPEC-01).
 
 ## Быстрый старт (Docker Compose)
 
 ```bash
-git clone <URL_РЕПОЗИТОРИЯ>
-cd full_proj
+git clone <URL_РЕПОЗИТОРИЯ> && cd full_proj
 chmod +x setup.sh && ./setup.sh
 ```
 
 | Сервис | URL | Описание |
 |---|---|---|
 | Фронтенд | `http://localhost:3000` | Next.js |
-| Бэкенд (через WAF) | `http://localhost:8080` | nginx → Laravel, **весь трафик проходит WAF** |
+| Бэкенд (через WAF) | `http://localhost:8080` | nginx → Laravel |
 | Админ-панель | `http://localhost:8080/admin` | Filament CMS |
 | API | `http://localhost:8080/api` | JSON-эндпоинты |
 
-## Быстрый старт (Kubernetes)
-
-```bash
-# Кластер: k3s на Ubuntu 24.04 (см. docs/specs/01-kubernetes.md)
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/
-
-# либо Helm:
-helm upgrade --install full-proj ./helm --namespace full-proj --create-namespace \
-  --set-string secrets.APP_KEY="..." --set-string secrets.DB_PASSWORD="..."
-```
-
-Полное описание — в [docs/specs/01-kubernetes.md](docs/specs/01-kubernetes.md) и
-[docs/specs/07-automation.md](docs/specs/07-automation.md).
-
 ---
 
-## Проверка работоспособности
+## Проверка работоспособности (k8s)
 
 ```bash
-# 1. Приложение (обязательный ответ, access-логи в логах контейнера)
-curl http://localhost:8080/api/news            # 200 + JSON
-docker compose logs -f webserver               # access-логи nginx
+# 1. Gateway API + приложение
+kubectl get gateway -n full-proj                    # PROGRAMMED: True
+curl -s http://localhost:30080/api/news | head -c 200   # 200 + JSON
 
 # 2. WAF: легитимный трафик проходит, атаки блокируются
-./waf/tests/run-tests.sh                       # 18/18 (CRS + сканеры по UA)
-python3 waf/tests/ddos_static.py               # L7-DDoS → HTTP 429
-docker logs -f modsecurity-waf                 # audit-лог (JSON) с ID правил
+./waf/tests/run-tests.sh http://localhost:30080     # 18/18
+python3 waf/tests/ddos_static.py --url http://localhost:30080/favicon.ico  # 429
+kubectl logs -n full-proj deploy/waf                # audit JSON с ruleId
 
-# 3. Kubernetes
-kubectl get pods -n full-proj
-curl http://<node-ip>:30080/api/news           # бэкенд через NodePort/Ingress
+# 3. Мониторинг
+kubectl port-forward -n monitoring svc/prometheus-server 9090:80
+curl 'http://localhost:9090/api/v1/query?query=up' | jq '.data.result[] | {job: .metric.job, value: .value[1]}'
+curl 'http://localhost:9090/api/v1/query?query=nginx_http_requests_total'
+
+# 4. Логирование (после обращения к приложению)
+kubectl port-forward -n logging svc/loki 3100:3100
+curl -G 'http://localhost:3100/loki/api/v1/query_range' --data-urlencode 'query={namespace="full-proj"}'
 ```
 
 ---
 
 ## Документация
 
-- [`docs/README.md`](docs/README.md) — индекс спецификаций и паспорт решения;
+- [`docs/README.md`](docs/README.md) — индекс спецификаций и архитектура;
 - [`docs/passport.md`](docs/passport.md) — паспорт решения по структуре задания;
 - [`docs/specs/`](docs/specs/) — спецификации разделов задания (01–09);
 - [`waf/SPEC.md`](waf/SPEC.md) — детальная спецификация WAF;
@@ -95,6 +99,6 @@ curl http://<node-ip>:30080/api/news           # бэкенд через NodePor
 ## Безопасность
 
 В репозитории **нет** реальных паролей, токенов или ключей. Секреты передаются через
-переменные окружения (`.env`, см. [`.env.example`](.env.example)), Kubernetes Secrets
-(Helm `stringData` из CI-секретов) и GitHub Actions secrets. Подробнее —
+переменные окружения (`.env`), Kubernetes Secrets (`helm/templates/secrets.yaml`,
+значения из `local-secrets.yaml` / CI-secrets) и GitHub Actions secrets. Подробнее —
 [docs/specs/08-security.md](docs/specs/08-security.md).

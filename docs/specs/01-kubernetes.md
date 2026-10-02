@@ -7,56 +7,72 @@
 
 | | |
 |---|---|
-| Статус | ✅ Реализовано (с оговорками, см. «Ограничения») |
-| Кластер | k3s v1.28 (Kubernetes v1.28) на Ubuntu 24.04 — стенд участника |
-| Способ развёртывания | raw-манифесты `k8s/` + Helm-чарт `helm/` |
-| Зависит от коммерческих сервисов | нет (образы GHCR можно заменить локальной сборкой) |
+| Статус | ✅ Реализовано и проверено локально |
+| Кластер | **k3s v1.36.5+k3s1 (Kubernetes v1.36.5)**, containerd 2.3.4, CNI flannel |
+| ОС стенда | Ubuntu 24.04.5 LTS |
+| Способ развёртывания | Helm-чарт `helm/` + инфраструктурные чарты `infra/` (одна команда: `./scripts/deploy.sh`) |
+| Зависит от коммерческих сервисов | нет (все чарты — OCI из ghcr.io, образы собираются локально или в GHCR) |
 
 ## 1. Требования
 
 | ID | Требование | Статус |
 |----|-----------|--------|
 | FR-K8S-1 | Kubernetes-кластер для развёртывания решения | ✅ k3s |
-| FR-K8S-2 | Все ресурсы описаны как код (манифесты/Helm), без ручной настройки | ✅ `k8s/` + `helm/` |
+| FR-K8S-2 | Все ресурсы описаны как код, без ручной настройки | ✅ Helm-чарты + `scripts/deploy.sh` |
 | FR-K8S-3 | В README указаны: версия K8s, способ создания кластера, ОС | ✅ см. [README](../../readme.md) |
 | FR-K8S-4 | Решение не зависит от инфраструктуры участника и коммерческих сервисов | ✅ |
 | NFR-K8S-1 | Воспроизводимость экспертами по материалам репозитория | ✅ (см. верификацию) |
 
 ## 2. Реализация
 
-- **k3s** выбран как лёгкая совместимая с Kubernetes среда развёртывания
-  (кейс допускает k3d/minikube/kind; kubeadm — приоритетный вариант, отмечен в роадмапе).
-- Ресурсы:
-  - `k8s/namespace.yaml` — namespace `full-proj`;
-  - `k8s/mysql.yaml`, `k8s/mysql-pvc.yaml` — БД MariaDB + PersistentVolumeClaim;
-  - `k8s/backend.yaml` — Deployment Laravel (секреты из Secret `app-secrets`);
-  - `k8s/nginx.yaml` — ConfigMap + Deployment + Service `nginx` (NodePort `30080`);
-  - `k8s/frontend.yaml` — Deployment Next.js (NodePort `30560`).
-- **Helm-чарт `helm/`** (apiVersion v2, appVersion 1.0.0) — полный аналог манифестов
-  с параметризацией через `values.yaml`; секреты приходят как `--set-string secrets.*`
-  из CI (GitHub Actions secrets), в репозитории значения пустые.
-- Создание кластера (Ubuntu 24.04):
+### 2.1. Создание кластера (Ubuntu 24.04)
 
 ```bash
-curl -sfL https://get.k3s.io | sh -
-sudo k3s kubectl get nodes
-# kubeconfig: /etc/rancher/k3s/k3s.yaml (или kubectl после настройки доступа)
+# k3s без встроенного traefik v2 (ставим Traefik v3 с Gateway API отдельно)
+curl -sfL https://get.k3s.io | sh -s - --disable traefik --disable metrics-server
+sudo cat /etc/rancher/k3s/k3s.yaml > ~/.kube/config && chmod 600 ~/.kube/config
+kubectl get nodes   # Ready
 ```
+
+> **Примечание 1 (k3s v1.36.x).** CoreDNS может стартовать без env
+> `KUBERNETES_SERVICE_HOST/PORT`, из-за чего DNS кластера не работает
+> (NXDOMAIN для всех `*.svc.cluster.local`). `scripts/deploy.sh` автоматически
+> добавляет эти переменные в deployment `coredns` (идемпотентный patch).
+>
+> **Примечание 2 (VPN).** Если на машине включён VPN с policy-routing
+> (перехват порта 53 или подсети сервисов k3s `10.43.0.0/16`), DNS-запросы
+> из подов уходят в туннель и отвечают NXDOMAIN. Для локального стенда VPN
+> нужно отключить (проверено на реальном стенде).
+
+### 2.2. Развёртывание решения
+
+```bash
+./scripts/build-images.sh   # собрать и залить образы в локальный registry localhost:5000
+./scripts/deploy.sh         # CRD Gateway API -> Traefik -> приложение+WAF -> Prometheus -> Loki+Fluent Bit
+```
+
+Состав (все компоненты — Helm, повторный запуск идемпотентен):
+
+| Компонент | Ресурс | Источник |
+|---|---|---|
+| Gateway API CRD | стандартный канал **v1.5.1** | `kubernetes-sigs/gateway-api` |
+| Traefik v3.7.13 | `traefik/traefik` (GatewayClass `traefik`) | OCI `ghcr.io/traefik/helm/traefik` |
+| Приложение + WAF + Gateway/HTTPRoute | чарт `helm/` (release `full-proj`) | репозиторий |
+| Prometheus v3.15 + node-exporter + kube-state-metrics | release `prometheus` | OCI `ghcr.io/prometheus-community/charts/prometheus` |
+| Loki 3.6 + Fluent Bit 5.1.3 | releases `loki`, `fluent-bit` | OCI `ghcr.io/grafana/helm-charts/loki`, `ghcr.io/fluent/helm-charts/fluent-bit` |
 
 ## 3. Верификация
 
 ```bash
-kubectl get nodes                       # кластер жив
-kubectl apply -f k8s/namespace.yaml && kubectl apply -f k8s/
-kubectl get pods -n full-proj           # backend, frontend, mysql, nginx = Running
-kubectl get svc -n full-proj            # nginx:30080, frontend:30560 (NodePort)
+kubectl get nodes                       # Ready, v1.36.5+k3s1
+kubectl get pods -A                     # все Running (full-proj, monitoring, logging, traefik)
+kubectl get gateway -n full-proj        # PROGRAMMED: True, Address: <node-ip>
+./scripts/deploy.sh                     # повторный запуск -> "has been upgraded", без ошибок
 ```
 
 ## 4. Известные ограничения / роадмап
 
-1. **Версия k3s не зафиксирована** в репозитории (определяется стендом). При переносе
-   зафиксируйте фактическую версию в этом файле и в README.
-2. Приоритет кейса — **kubeadm**: для финальной сдачи рекомендуется описать установку
-   kubeadm-кластера на Ubuntu 24.04 (`kubeadm init` + CNI) как альтернативный путь.
-3. Манифесты `k8s/` и Helm-чарт пересекаются — поддерживать оба дорого; предлагается
-   оставить Helm как единственный способ (роадмап).
+1. kubeadm — приоритетный вариант кейса; решение валидировано на k3s (допустимый вариант).
+   Для переноса на kubeadm достаточно переустановить Gateway API/Traefik и применить чарт.
+2. Raw-манифесты `k8s/` удалены — единственный источник истины Helm-чарт `helm/`.
+3. Один узел (control-plane) — для HA нужно ≥3 узла + внешний datastore (роадмап).
