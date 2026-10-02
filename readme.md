@@ -1,133 +1,100 @@
-# Руководство по запуску проекта
+# full_proj — Laravel CMS + Next.js + WAF (ModSecurity)
 
-Простой запуск стека: **Laravel + Filament CMS + Next.js + Nginx + MySQL** через Docker.
+Веб-приложение на стеке **Laravel 10 + Filament CMS + Next.js + MariaDB**, защищённое
+WAF **ModSecurity + OWASP CRS**, с двумя способами развёртывания:
 
-## Быстрый старт
+- **локально / на ВМ** — Docker Compose (одна команда: `./setup.sh`);
+- **в Kubernetes** — raw-манифесты (`k8s/`) или Helm-чарт (`helm/`) + CI/CD (GitHub Actions).
 
-### Для Linux / macOS / Git Bash на Windows
+Документация оформлена в подходе **spec-driven development** (требования → критерии приёмки →
+реализация → верификация) на основе технического задания конкурса. Полный комплект
+спецификаций — в [`docs/`](docs/README.md).
+
+---
+
+## Состав решения и версии
+
+| Компонент | Реализация / версия |
+|---|---|
+| Kubernetes | **k3s v1.28 (Kubernetes v1.28)** — см. [SPEC-01](docs/specs/01-kubernetes.md); ⚠️ зафиксируйте точную версию стенда при переносе |
+| Способ создания кластера | k3s (`curl -sfL https://get.k3s.io | sh -`) на Ubuntu 24.04; допускается kubeadm |
+| ОС | **Ubuntu 24.04 LTS** (тестовый стенд; Docker-путь — любая ОС с Docker) |
+| Доступ к приложению | Traefik **Ingress** + NodePort (`nginx` :30080, `frontend` :30560); **Gateway API — в роадмапе** ([SPEC-03](docs/specs/03-gateway-api.md)) |
+| Веб-приложение | Laravel 10 (PHP 8.1+), Filament 3, MoonShine, MariaDB 10.11, Next.js 16 / React 19 |
+| Образы | собираются из репозитория (`CMS/Dockerfile`, `It_project/dockerfile`) либо из GHCR |
+| WAF | ModSecurity 3.0.16 + ModSecurity-nginx 1.0.4 + OWASP CRS 3.3.10 (образ `owasp/modsecurity-crs:nginx-alpine`) — [SPEC-06](docs/specs/06-waf.md), [waf/SPEC.md](waf/SPEC.md) |
+| Мониторинг | Prometheus — **в роадмапе** ([SPEC-04](docs/specs/04-monitoring.md)) |
+| Сбор логов | access/error-логи nginx → stdout; Fluentd/Filebeat — **в роадмапе** ([SPEC-05](docs/specs/05-logging.md)) |
+| Автоматизация | `setup.sh` / `setup.ps1` (Compose), Helm-чарт, CI/CD GitHub Actions ([SPEC-07](docs/specs/07-automation.md)) |
+
+> ⚠️ Честный статус: обязательные компоненты кейса (Gateway API, Prometheus, Fluentd/Filebeat)
+> в текущей версии репозитория **не реализованы** — их статус и план внедрения описаны
+> в соответствующих спецификациях. Всё, что заявлено как работающее, можно проверить командами ниже.
+
+---
+
+## Быстрый старт (Docker Compose)
 
 ```bash
-# 1. Клонируйте репозиторий
-git clone https://github.com/Beasbe/full_proj.git
-
-# 2. Перейдите в папку проекта
+git clone <URL_РЕПОЗИТОРИЯ>
 cd full_proj
-
-# 3. Запустите автоматическую настройку
-chmod +x setup.sh
-./setup.sh
-
-# 4. Заполните данные для отправки почты
-# Откройте файл It_project/.env.local и укажите SMTP-настройки:
-# SMTP_HOST=smtp.example.com
-# SMTP_PORT=587
-# SMTP_USERNAME=your_email@example.com
-# SMTP_PASSWORD=your_password
+chmod +x setup.sh && ./setup.sh
 ```
-
-### Для Windows (PowerShell)
-
-```powershell
-# 1. Клонируйте репозиторий
-git clone https://github.com/Beasbe/full_proj.git
-
-# 2. Перейдите в папку проекта
-cd full_proj
-
-# 3. Запустите скрипт настройки
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\setup.ps1
-
-# 4. Заполните данные для отправки почты в It_project\.env.local
-```
-
----
-
-## Что делает скрипт автоматически
-
-1.  Проверяет наличие зависимостей: Git, Docker, Docker Compose v2+
-2.  Клонирует фронтенд-репозиторий `It_project` (если отсутствует)
-3.  Создаёт файлы `.env` из примеров
-4.  Собирает и запускает Docker-контейнеры
-5.  Устанавливает PHP-зависимости через Composer
-6.  Генерирует `APP_KEY` для Laravel
-7.  Применяет миграции базы данных
-8.  Запускает интерактивное создание администратора Filament
-
----
-
-## Доступ к приложению после запуска
 
 | Сервис | URL | Описание |
-|--------|-----|----------|
-| Фронтенд | `http://localhost:3000` | Основное приложение на Next.js |
-| Админ-панель | `http://localhost:8080/admin` | Filament CMS для управления контентом |
-| API | `http://localhost:8080/api` | Бэкенд-эндпоинты для фронтенда |
+|---|---|---|
+| Фронтенд | `http://localhost:3000` | Next.js |
+| Бэкенд (через WAF) | `http://localhost:8080` | nginx → Laravel, **весь трафик проходит WAF** |
+| Админ-панель | `http://localhost:8080/admin` | Filament CMS |
+| API | `http://localhost:8080/api` | JSON-эндпоинты |
 
----
-
-## Полезные команды
+## Быстрый старт (Kubernetes)
 
 ```bash
-# Просмотр логов
-docker compose logs -f app          # Laravel
-docker compose logs -f frontend     # Next.js
-docker compose logs -f db           # База данных
+# Кластер: k3s на Ubuntu 24.04 (см. docs/specs/01-kubernetes.md)
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/
 
-# Вход в контейнер Laravel
-docker compose exec app bash
-
-# Консоль Laravel (Tinker)
-docker compose exec app php artisan tinker
-
-# Очистка кеша
-docker compose exec app php artisan config:clear
-docker compose exec app php artisan cache:clear
-
-# Остановка проекта
-docker compose down
-
-# Полная очистка (с удалением данных БД)
-docker compose down -v
+# либо Helm:
+helm upgrade --install full-proj ./helm --namespace full-proj --create-namespace \
+  --set-string secrets.APP_KEY="..." --set-string secrets.DB_PASSWORD="..."
 ```
 
----
-
-## Требования
-
--   **Git**: https://git-scm.com/downloads
--   **Docker Desktop** (с Docker Compose v2+): https://docs.docker.com/get-docker/
--   На Windows рекомендуется использовать **WSL2** бэкенд в настройках Docker Desktop
+Полное описание — в [docs/specs/01-kubernetes.md](docs/specs/01-kubernetes.md) и
+[docs/specs/07-automation.md](docs/specs/07-automation.md).
 
 ---
 
+## Проверка работоспособности
 
-## Примеры работы с пользователями
-
-### Создание пользователя через админ-панель
-1.  Откройте `http://localhost:8080/admin`
-2.  Войдите под учётными данными, созданными при установке
-3.  Перейдите в раздел **Users** → **New User**
-4.  Заполните форму и нажмите **Create**
-
-### Создание пользователя через консоль
 ```bash
-docker compose exec app php artisan tinker
-```
-```php
-\App\Models\User::create([
-    'name' => 'Иван Иванов',
-    'email' => 'ivan@example.com',
-    'password' => bcrypt('secret123'),
-]);
-exit
-```
+# 1. Приложение (обязательный ответ, access-логи в логах контейнера)
+curl http://localhost:8080/api/news            # 200 + JSON
+docker compose logs -f webserver               # access-логи nginx
 
-### Создание администратора через CLI
-```bash
-docker compose exec app php artisan make:filament-user
+# 2. WAF: легитимный трафик проходит, атаки блокируются
+./waf/tests/run-tests.sh                       # 18/18 (CRS + сканеры по UA)
+python3 waf/tests/ddos_static.py               # L7-DDoS → HTTP 429
+docker logs -f modsecurity-waf                 # audit-лог (JSON) с ID правил
+
+# 3. Kubernetes
+kubectl get pods -n full-proj
+curl http://<node-ip>:30080/api/news           # бэкенд через NodePort/Ingress
 ```
 
 ---
 
-> **Примечание**: Все данные базы данных хранятся в Docker-томе. При выполнении `docker compose down -v` данные будут удалены. Для сохранения данных используйте `docker compose down` (без флага `-v`).
+## Документация
+
+- [`docs/README.md`](docs/README.md) — индекс спецификаций и паспорт решения;
+- [`docs/passport.md`](docs/passport.md) — паспорт решения по структуре задания;
+- [`docs/specs/`](docs/specs/) — спецификации разделов задания (01–09);
+- [`waf/SPEC.md`](waf/SPEC.md) — детальная спецификация WAF;
+- [`MIGRATION.md`](MIGRATION.md) — перенос репозитория на новый GitHub.
+
+## Безопасность
+
+В репозитории **нет** реальных паролей, токенов или ключей. Секреты передаются через
+переменные окружения (`.env`, см. [`.env.example`](.env.example)), Kubernetes Secrets
+(Helm `stringData` из CI-секретов) и GitHub Actions secrets. Подробнее —
+[docs/specs/08-security.md](docs/specs/08-security.md).
